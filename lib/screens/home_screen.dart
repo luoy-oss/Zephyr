@@ -21,23 +21,45 @@ class HomeScreen extends ConsumerStatefulWidget {
   ConsumerState<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends ConsumerState<HomeScreen> {
+class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObserver {
   bool _hasAccessibility = false;
   bool _hasOverlay = false;
+  bool _isFloatingRunning = false;
+  bool _isChecking = true;
 
   @override
   void initState() {
     super.initState();
-    _checkPermissions();
+    WidgetsBinding.instance.addObserver(this);
+    _checkAllPermissions();
   }
 
-  Future<void> _checkPermissions() async {
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _checkAllPermissions();
+    }
+  }
+
+  Future<void> _checkAllPermissions() async {
+    setState(() => _isChecking = true);
+
     final accessibility = await NativeService.checkAccessibility();
     final overlay = await NativeService.checkOverlayPermission();
+    final floatingRunning = await NativeService.isFloatingWindowRunning();
+
     if (mounted) {
       setState(() {
         _hasAccessibility = accessibility;
         _hasOverlay = overlay;
+        _isFloatingRunning = floatingRunning;
+        _isChecking = false;
       });
     }
   }
@@ -47,6 +69,22 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final scoreState = ref.watch(scoreListProvider);
     final playbackState = ref.watch(playbackProvider);
     final filteredScores = ref.watch(filteredScoresProvider);
+
+    // 权限检查中显示加载状态
+    if (_isChecking) {
+      return const Scaffold(
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(height: 16),
+              Text('检查权限中...'),
+            ],
+          ),
+        ),
+      );
+    }
 
     return Scaffold(
       appBar: AppBar(
@@ -70,18 +108,27 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           // 校准按钮
           IconButton(
             icon: const Icon(Icons.tune),
-            onPressed: () => Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const CalibrationScreen()),
-            ),
+            onPressed: _hasOverlay
+                ? () => Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const CalibrationScreen()),
+                    )
+                : () => _showPermissionDialog(),
           ),
         ],
       ),
       body: Column(
         children: [
+          // 悬浮窗开关卡片
+          _buildFloatingToggleCard(),
+
+          // 权限提示
+          if (!_hasAccessibility || !_hasOverlay)
+            _buildPermissionBanner(),
+
           // 搜索栏
           Padding(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             child: TextField(
               decoration: InputDecoration(
                 hintText: AppStrings.searchScore,
@@ -136,10 +183,163 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     );
   }
 
+  Widget _buildFloatingToggleCard() {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: _isFloatingRunning
+            ? AppColors.primary.withOpacity(0.2)
+            : AppColors.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: _isFloatingRunning ? AppColors.primary : Colors.transparent,
+          width: 1,
+        ),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            _isFloatingRunning ? Icons.circle : Icons.circle_outlined,
+            color: _isFloatingRunning ? Colors.green : AppColors.textSecondary,
+            size: 12,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  '悬浮窗控制',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+                Text(
+                  _isFloatingRunning ? '运行中 - 点击小球展开控制面板' : '已关闭',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Switch(
+            value: _isFloatingRunning,
+            activeColor: AppColors.primary,
+            onChanged: (value) async {
+              if (value) {
+                // 检查权限
+                if (!_hasOverlay) {
+                  _showPermissionDialog();
+                  return;
+                }
+                if (!_hasAccessibility) {
+                  _showPermissionDialog();
+                  return;
+                }
+                await NativeService.startFloatingWindow();
+              } else {
+                await NativeService.stopFloatingWindow();
+              }
+              // 延迟检查状态
+              await Future.delayed(const Duration(milliseconds: 500));
+              _checkAllPermissions();
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPermissionBanner() {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.error.withOpacity(0.2),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.error),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(Icons.warning, color: AppColors.error, size: 20),
+              SizedBox(width: 8),
+              Text(
+                '需要授予权限',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.error,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          if (!_hasAccessibility)
+            _buildPermissionItem(
+              icon: Icons.accessibility_new,
+              title: '无障碍权限',
+              subtitle: '用于模拟屏幕点击',
+              onTap: () => NativeService.openAccessibilitySettings(),
+            ),
+          if (!_hasOverlay)
+            _buildPermissionItem(
+              icon: Icons.layers,
+              title: '悬浮窗权限',
+              subtitle: '用于在游戏上层显示控制面板',
+              onTap: () => NativeService.requestOverlayPermission(),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPermissionItem({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required VoidCallback onTap,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(8),
+        child: Padding(
+          padding: const EdgeInsets.all(8),
+          child: Row(
+            children: [
+              Icon(icon, color: AppColors.error, size: 20),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(title, style: const TextStyle(fontWeight: FontWeight.w500)),
+                    Text(
+                      subtitle,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(Icons.arrow_forward_ios, size: 16, color: AppColors.error),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildSelectedScoreBar(dynamic scoreState, PlaybackState playbackState) {
     final score = scoreState.selectedScore!;
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16),
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: AppColors.surface,
@@ -147,7 +347,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       ),
       child: Column(
         children: [
-          // 乐谱名称和进度
           Row(
             children: [
               Expanded(
@@ -167,8 +366,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             ],
           ),
           const SizedBox(height: 8),
-
-          // 进度条
           if (playbackState.status != PlaybackStatus.idle)
             LinearProgressIndicator(
               value: playbackState.progress,
@@ -176,17 +373,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               valueColor: const AlwaysStoppedAnimation(AppColors.primary),
             ),
           const SizedBox(height: 8),
-
-          // 控制按钮
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              // 倒计时显示
               if (playbackState.status == PlaybackStatus.countdown)
                 Padding(
                   padding: const EdgeInsets.only(right: 16),
                   child: Text(
-                    '${playbackState.countdownRemaining}${AppStrings.countdownStart}',
+                    '${playbackState.countdownRemaining}秒后开始',
                     style: const TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.bold,
@@ -194,28 +388,26 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     ),
                   ),
                 ),
-
-              // 播放/暂停按钮
               IconButton(
                 iconSize: 36,
                 icon: Icon(
                   playbackState.status == PlaybackStatus.playing
                       ? Icons.pause_circle_filled
                       : Icons.play_circle_filled,
-                  color: AppColors.primary,
+                  color: _isFloatingRunning ? AppColors.primary : AppColors.textSecondary,
                 ),
-                onPressed: () {
-                  final notifier = ref.read(playbackProvider.notifier);
-                  if (playbackState.status == PlaybackStatus.playing) {
-                    notifier.pause();
-                  } else {
-                    notifier.setOnNoteEvent(_onNoteEvent);
-                    notifier.play();
-                  }
-                },
+                onPressed: _isFloatingRunning
+                    ? () {
+                        final notifier = ref.read(playbackProvider.notifier);
+                        if (playbackState.status == PlaybackStatus.playing) {
+                          notifier.pause();
+                        } else {
+                          notifier.setOnNoteEvent(_onNoteEvent);
+                          notifier.play();
+                        }
+                      }
+                    : null,
               ),
-
-              // 停止按钮
               if (playbackState.status != PlaybackStatus.idle)
                 IconButton(
                   iconSize: 36,
@@ -224,10 +416,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     ref.read(playbackProvider.notifier).stop();
                   },
                 ),
-
               const SizedBox(width: 16),
-
-              // 速度调节
               const Text('速度:'),
               SizedBox(
                 width: 100,
@@ -250,12 +439,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 
   Widget _buildEmptyState() {
-    return Center(
+    return const Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Icon(Icons.music_note, size: 64, color: AppColors.textSecondary),
-          const SizedBox(height: 16),
+          SizedBox(height: 16),
           Text(
             AppStrings.noScores,
             style: TextStyle(color: AppColors.textSecondary, fontSize: 16),
@@ -285,7 +474,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           return;
         }
 
-        // 使用文件名作为乐谱名称
         final name = file.name.replaceAll('.txt', '');
         await ref.read(scoreListProvider.notifier).importScore(name, content);
 
@@ -331,34 +519,42 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text(AppStrings.permissionRequired),
+        title: const Text('需要权限'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            const Text('Zephyr 需要以下权限才能正常工作：'),
+            const SizedBox(height: 16),
             if (!_hasAccessibility) ...[
-              const Text(AppStrings.accessibilityDesc),
-              const SizedBox(height: 8),
-              ElevatedButton(
-                onPressed: () {
+              ListTile(
+                leading: const Icon(Icons.accessibility_new, color: AppColors.primary),
+                title: const Text('无障碍权限'),
+                subtitle: const Text('用于模拟屏幕点击'),
+                trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+                onTap: () {
                   NativeService.openAccessibilitySettings();
                   Navigator.pop(context);
                 },
-                child: const Text('${AppStrings.grantPermission} - ${AppStrings.accessibilityPermission}'),
               ),
             ],
             if (!_hasOverlay) ...[
-              const SizedBox(height: 16),
-              const Text(AppStrings.overlayDesc),
-              const SizedBox(height: 8),
-              ElevatedButton(
-                onPressed: () {
+              ListTile(
+                leading: const Icon(Icons.layers, color: AppColors.primary),
+                title: const Text('悬浮窗权限'),
+                subtitle: const Text('用于在游戏上层显示'),
+                trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+                onTap: () {
                   NativeService.requestOverlayPermission();
                   Navigator.pop(context);
                 },
-                child: const Text('${AppStrings.grantPermission} - ${AppStrings.overlayPermission}'),
               ),
             ],
+            const SizedBox(height: 8),
+            const Text(
+              '授予权限后返回应用，状态会自动更新',
+              style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+            ),
           ],
         ),
         actions: [
@@ -377,13 +573,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final notes = event.notes as List;
 
     if (notes.length == 1) {
-      // 单音符
       final note = notes[0];
       final x = config.getX(note.col);
       final y = config.getY(note.row);
       NativeService.tap(x, y, config.tapDurationMs);
     } else if (notes.length > 1) {
-      // 和弦 - 同时点击多个位置
       final points = notes.map<List<double>>((note) => [
         config.getX(note.col),
         config.getY(note.row),

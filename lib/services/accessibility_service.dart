@@ -45,23 +45,43 @@ class NativeService {
     await _mainChannel.invokeMethod('stopFloatingWindow');
   }
 
+  /// 检查悬浮窗是否运行中
+  static Future<bool> isFloatingWindowRunning() async {
+    try {
+      final result = await _mainChannel.invokeMethod<bool>('isFloatingWindowRunning');
+      return result ?? false;
+    } catch (e) {
+      return false;
+    }
+  }
+
   /// 执行单点点击
-  static Future<void> tap(double x, double y, int durationMs) async {
-    await _tapChannel.invokeMethod('tap', {
-      'x': x,
-      'y': y,
-      'durationMs': durationMs,
-    });
+  static Future<bool> tap(double x, double y, int durationMs) async {
+    try {
+      await _tapChannel.invokeMethod('tap', {
+        'x': x,
+        'y': y,
+        'durationMs': durationMs,
+      });
+      return true;
+    } catch (e) {
+      return false;
+    }
   }
 
   /// 执行多点点击（和弦）
-  static Future<void> tapMultiple(
+  static Future<bool> tapMultiple(
     List<List<double>> points,
     int durationMs,
   ) async {
-    await _tapChannel.invokeMethod('tapMultiple', {
-      'points': points,
-      'durationMs': durationMs,
-    });
+    try {
+      await _tapChannel.invokeMethod('tapMultiple', {
+        'points': points,
+        'durationMs': durationMs,
+      });
+      return true;
+    } catch (e) {
+      return false;
+    }
   }
 }
