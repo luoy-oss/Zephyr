@@ -48,6 +48,10 @@ class PlaybackState {
 
   double get progress =>
       totalEvents > 0 ? currentEventIndex / totalEvents : 0;
+
+  /// 下一个事件索引（用于预显示待按按键）
+  int get nextEventIndex =>
+      currentEventIndex < totalEvents ? currentEventIndex : totalEvents;
 }
 
 /// 播放引擎
@@ -118,11 +122,41 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
 
   /// 设置速度倍率
   void setSpeed(double speed) {
-    state = state.copyWith(speed: speed);
+    state = state.copyWith(speed: speed.clamp(0.1, 10.0));
     if (state.status == PlaybackStatus.playing) {
       _timer?.cancel();
       _startTimer();
     }
+  }
+
+  /// 根据乐曲 BPM 自动缩放速度
+  /// 乐曲 BPM / 用户设置的基准 BPM = 播放速度倍率
+  void autoScaleSpeed(int songBpm) {
+    final baseBpm = ref.read(bpmProvider);
+    if (baseBpm > 0) {
+      final ratio = songBpm / baseBpm;
+      setSpeed(ratio.clamp(0.1, 10.0));
+    }
+  }
+
+  /// 获取当前待播放的事件（用于预显示下一个按键）
+  ScoreEvent? get currentEvent {
+    final scoreState = ref.read(scoreListProvider);
+    final score = scoreState.selectedScore;
+    if (score == null) return null;
+    final idx = state.currentEventIndex;
+    if (idx < 0 || idx >= score.events.length) return null;
+    return score.events[idx];
+  }
+
+  /// 获取下一个待播放的事件（用于预显示）
+  ScoreEvent? get nextEvent {
+    final scoreState = ref.read(scoreListProvider);
+    final score = scoreState.selectedScore;
+    if (score == null) return null;
+    final idx = state.nextEventIndex;
+    if (idx < 0 || idx >= score.events.length) return null;
+    return score.events[idx];
   }
 
   /// 启动播放定时器

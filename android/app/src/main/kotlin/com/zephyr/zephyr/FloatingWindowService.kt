@@ -38,6 +38,7 @@ class FloatingWindowService : Service() {
         var onStop: (() -> Unit)? = null
         var onSelectScore: ((String) -> Unit)? = null
         var onCalibrationChanged: ((Float, Float, Float, Float) -> Unit)? = null
+        var onPanelOpened: (() -> Unit)? = null
     }
 
     private var windowManager: WindowManager? = null
@@ -305,13 +306,21 @@ class FloatingWindowService : Service() {
         contentLayout.addView(controlRow)
         contentLayout.addView(createDivider())
 
-        // 速度控制
+        // 速度控制 (0.1x - 10.0x)
         val speedLabel = TextView(this).apply {
-            text = "速度: ${String.format("%.2f", currentSpeed)}x"
+            text = "速度: ${String.format("%.1f", currentSpeed)}x"
             setTextColor(Color.WHITE)
             textSize = 13f
         }
         contentLayout.addView(speedLabel)
+
+        fun updateSpeedLabel() {
+            speedLabel.text = "速度: ${String.format("%.1f", currentSpeed)}x"
+        }
+
+        // 将 0.1-10.0 映射到 SeekBar 0-99
+        fun speedToProgress(speed: Float): Int = ((speed - 0.1f) / 0.1f).toInt().coerceIn(0, 99)
+        fun progressToSpeed(progress: Int): Float = (0.1f + progress * 0.1f).coerceIn(0.1f, 10.0f)
 
         val speedBar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -319,16 +328,16 @@ class FloatingWindowService : Service() {
             setPadding(0, dpToPx(4), 0, dpToPx(8))
         }
         speedBar.addView(createSmallButton("−") {
-            currentSpeed = (currentSpeed - 0.25f).coerceAtLeast(0.25f)
-            speedLabel.text = "速度: ${String.format("%.2f", currentSpeed)}x"
+            currentSpeed = (currentSpeed - if (currentSpeed <= 1.0f) 0.1f else 0.5f).coerceAtLeast(0.1f)
+            updateSpeedLabel()
         })
         speedBar.addView(SeekBar(this).apply {
-            max = 11
-            progress = ((currentSpeed - 0.25f) / 0.25f).toInt()
+            max = 99
+            progress = speedToProgress(currentSpeed)
             setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
                 override fun onProgressChanged(sb: SeekBar?, progress: Int, fromUser: Boolean) {
-                    currentSpeed = 0.25f + progress * 0.25f
-                    speedLabel.text = "速度: ${String.format("%.2f", currentSpeed)}x"
+                    currentSpeed = progressToSpeed(progress)
+                    updateSpeedLabel()
                 }
                 override fun onStartTrackingTouch(sb: SeekBar?) {}
                 override fun onStopTrackingTouch(sb: SeekBar?) {}
@@ -337,8 +346,8 @@ class FloatingWindowService : Service() {
             marginStart = dpToPx(8); marginEnd = dpToPx(8)
         })
         speedBar.addView(createSmallButton("+") {
-            currentSpeed = (currentSpeed + 0.25f).coerceAtMost(3.0f)
-            speedLabel.text = "速度: ${String.format("%.2f", currentSpeed)}x"
+            currentSpeed = (currentSpeed + if (currentSpeed < 1.0f) 0.1f else 0.5f).coerceAtMost(10.0f)
+            updateSpeedLabel()
         })
         contentLayout.addView(speedBar)
         contentLayout.addView(createDivider())
@@ -429,6 +438,9 @@ class FloatingWindowService : Service() {
 
         windowManager?.addView(mainPanel, params)
         isMainPanelShowing = true
+
+        // 通知 Flutter 面板已打开（用于暂停播放）
+        onPanelOpened?.invoke()
     }
 
     private fun hideMainPanel() {
@@ -465,6 +477,33 @@ class FloatingWindowService : Service() {
                 showTapEffectOverlay()
             }
             tapEffectOverlay?.addTapEffect(x, y)
+        }
+    }
+
+    fun showDebugTapAt(x: Float, y: Float, label: String) {
+        val handler = android.os.Handler(mainLooper)
+        handler.post {
+            if (tapEffectOverlay == null) {
+                showTapEffectOverlay()
+            }
+            tapEffectOverlay?.addDebugTapEffect(x, y, label)
+        }
+    }
+
+    fun showNextKey(x: Float, y: Float, noteName: String) {
+        val handler = android.os.Handler(mainLooper)
+        handler.post {
+            if (tapEffectOverlay == null) {
+                showTapEffectOverlay()
+            }
+            tapEffectOverlay?.setNextKeyIndicator(x, y, noteName)
+        }
+    }
+
+    fun clearNextKey() {
+        val handler = android.os.Handler(mainLooper)
+        handler.post {
+            tapEffectOverlay?.clearNextKeyIndicator()
         }
     }
 

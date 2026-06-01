@@ -88,6 +88,25 @@ class NativeService {
     });
   }
 
+  /// 显示带坐标的 Debug 点击动效
+  static Future<void> showDebugTapEffect(double x, double y, String label) async {
+    await _floatingChannel.invokeMethod('showDebugTapEffect', {
+      'x': x, 'y': y, 'label': label,
+    });
+  }
+
+  /// 预显示下一个待按按键
+  static Future<void> showNextKeyIndicator(double x, double y, String noteName) async {
+    await _floatingChannel.invokeMethod('showNextKeyIndicator', {
+      'x': x, 'y': y, 'noteName': noteName,
+    });
+  }
+
+  /// 清除下一个按键的预显示
+  static Future<void> clearNextKeyIndicator() async {
+    await _floatingChannel.invokeMethod('clearNextKeyIndicator');
+  }
+
   /// 设置悬浮窗回调
   static Future<void> setFloatingCallbacks({
     required Function() onPlay,
@@ -95,6 +114,7 @@ class NativeService {
     required Function() onStop,
     required Function(String) onSelectScore,
     required Function(double, double, double, double) onCalibrationChanged,
+    Function()? onPanelOpened,
   }) async {
     // 先设置原生端回调
     await _floatingChannel.invokeMethod('setCallbacks');
@@ -123,6 +143,9 @@ class NativeService {
             (args['colSpacing'] as num).toDouble(),
             (args['rowSpacing'] as num).toDouble(),
           );
+          break;
+        case 'onPanelOpened':
+          onPanelOpened?.call();
           break;
       }
     });

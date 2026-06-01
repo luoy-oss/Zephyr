@@ -40,6 +40,9 @@ class Score {
   /// 解析后的事件列表
   final List<ScoreEvent> events;
 
+  /// 乐曲 BPM（从 JSON 中解析，默认 500）
+  final int bpm;
+
   /// 创建时间
   final DateTime createdAt;
 
@@ -48,6 +51,7 @@ class Score {
     required this.name,
     required this.rawText,
     required this.events,
+    this.bpm = 500,
     DateTime? createdAt,
   }) : createdAt = createdAt ?? DateTime.now();
 

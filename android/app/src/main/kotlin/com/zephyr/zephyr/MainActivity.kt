@@ -123,6 +123,24 @@ class MainActivity : FlutterActivity() {
                     FloatingWindowService.instance?.showTapAt(x, y)
                     result.success(true)
                 }
+                "showDebugTapEffect" -> {
+                    val x = (call.argument<Number>("x"))?.toFloat() ?: 0f
+                    val y = (call.argument<Number>("y"))?.toFloat() ?: 0f
+                    val label = call.argument<String>("label") ?: ""
+                    FloatingWindowService.instance?.showDebugTapAt(x, y, label)
+                    result.success(true)
+                }
+                "showNextKeyIndicator" -> {
+                    val x = (call.argument<Number>("x"))?.toFloat() ?: 0f
+                    val y = (call.argument<Number>("y"))?.toFloat() ?: 0f
+                    val noteName = call.argument<String>("noteName") ?: ""
+                    FloatingWindowService.instance?.showNextKey(x, y, noteName)
+                    result.success(true)
+                }
+                "clearNextKeyIndicator" -> {
+                    FloatingWindowService.instance?.clearNextKey()
+                    result.success(true)
+                }
                 else -> result.notImplemented()
             }
         }
@@ -162,6 +180,12 @@ class MainActivity : FlutterActivity() {
                     "baseX" to bx, "baseY" to by,
                     "colSpacing" to cs, "rowSpacing" to rs
                 ))
+            }
+        }
+        FloatingWindowService.onPanelOpened = {
+            Log.d(TAG, "onPanelOpened callback triggered")
+            runOnUiThread {
+                floatingMethodChannel?.invokeMethod("onPanelOpened", null)
             }
         }
     }

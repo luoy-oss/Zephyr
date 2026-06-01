@@ -8,6 +8,7 @@ import 'package:file_picker/file_picker.dart';
 
 import '../core/constants/app_colors.dart';
 import '../core/constants/app_strings.dart';
+import '../core/utils/debug_log.dart';
 import '../providers/score_provider.dart';
 import '../providers/playback_provider.dart';
 import '../providers/settings_provider.dart';
@@ -88,6 +89,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
       onPlay: () {
         final notifier = ref.read(playbackProvider.notifier);
         notifier.setOnNoteEvent(_onNoteEvent);
+        // 根据乐曲 BPM 自动缩放速度
+        final selectedScore = ref.read(scoreListProvider).selectedScore;
+        if (selectedScore != null) {
+          notifier.autoScaleSpeed(selectedScore.bpm);
+        }
         notifier.play();
       },
       onPause: () => ref.read(playbackProvider.notifier).pause(),
@@ -100,6 +106,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
             columnSpacing: colSpacing, rowSpacing: rowSpacing,
           ),
         );
+      },
+      onPanelOpened: () {
+        // 悬浮窗面板打开时暂停播放
+        final playbackState = ref.read(playbackProvider);
+        if (playbackState.status == PlaybackStatus.playing) {
+          ref.read(playbackProvider.notifier).pause();
+          DebugLog.d('悬浮窗面板打开，自动暂停播放');
+        }
       },
     );
     _callbacksSet = true;
@@ -689,6 +703,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
                     notifier.pause();
                   } else {
                     notifier.setOnNoteEvent(_onNoteEvent);
+                    // 根据乐曲 BPM 自动缩放速度
+                    if (playbackState.status == PlaybackStatus.idle) {
+                      final selectedScore = ref.read(scoreListProvider).selectedScore;
+                      if (selectedScore != null) {
+                        notifier.autoScaleSpeed(selectedScore.bpm);
+                      }
+                    }
                     notifier.play();
                   }
                 },
@@ -739,10 +760,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
                           thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 5),
                         ),
                         child: Slider(
-                          value: playbackState.speed,
-                          min: 0.25,
-                          max: 3.0,
-                          divisions: 11,
+                          value: playbackState.speed.clamp(0.1, 10.0),
+                          min: 0.1,
+                          max: 10.0,
+                          divisions: 99,
                           onChanged: (value) => ref.read(playbackProvider.notifier).setSpeed(value),
                         ),
                       ),
@@ -934,14 +955,22 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
 
   void _onNoteEvent(dynamic event) {
     final config = ref.read(settingsProvider);
+    final playbackState = ref.read(playbackProvider);
     final notes = event.notes as List;
 
     if (notes.isEmpty) return;
+
+    // Debug 日志：当前事件信息
+    final noteNames = notes.map((n) => n.name).toList();
+    DebugLog.d('播放事件 #${playbackState.currentEventIndex}: $noteNames');
 
     if (notes.length == 1) {
       final note = notes[0];
       final x = config.getX(note.col);
       final y = config.getY(note.row);
+
+      DebugLog.d('  单音: ${note.name} → 坐标($x, $y)');
+
       NativeService.tap(x, y, config.tapDurationMs);
       if (_isFloatingRunning) {
         NativeService.showTapEffect(x, y);
@@ -951,11 +980,30 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
         config.getX(note.col),
         config.getY(note.row),
       ]).toList();
+
+      DebugLog.d('  和弦: $noteNames → 坐标$points');
+
       NativeService.tapMultiple(points, config.tapDurationMs);
       if (_isFloatingRunning) {
         for (final point in points) {
           NativeService.showTapEffect(point[0], point[1]);
         }
+      }
+    }
+
+    // 预显示下一个待按按键
+    if (_isFloatingRunning) {
+      final nextEvent = ref.read(playbackProvider.notifier).nextEvent;
+      if (nextEvent != null && !nextEvent.isRest && nextEvent.notes.isNotEmpty) {
+        final nextNotes = nextEvent.notes;
+        for (final note in nextNotes) {
+          final nx = config.getX(note.col);
+          final ny = config.getY(note.row);
+          NativeService.showNextKeyIndicator(nx, ny, note.name);
+        }
+        DebugLog.d('  预显示下一个: ${nextNotes.map((n) => n.name).toList()}');
+      } else {
+        NativeService.clearNextKeyIndicator();
       }
     }
   }

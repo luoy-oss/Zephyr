@@ -201,20 +201,24 @@ class ScoreParser {
 
     final events = parse(rawText);
 
-    // 如果没有指定名称，尝试从 JSON 中提取
+    // 如果没有指定名称，尝试从 JSON 中提取；同时提取 BPM
     String scoreName = name;
-    if (scoreName.isEmpty) {
-      try {
-        String cleanText = rawText.trim().replaceAll('﻿', '');
-        final jsonData = jsonDecode(cleanText);
-        if (jsonData is List && jsonData.isNotEmpty) {
-          scoreName = jsonData[0]['name']?.toString() ?? name;
+    int bpm = 500;
+    try {
+      String cleanText = rawText.trim().replaceAll('﻿', '');
+      final jsonData = jsonDecode(cleanText);
+      if (jsonData is List && jsonData.isNotEmpty) {
+        final song = jsonData[0];
+        if (scoreName.isEmpty) {
+          scoreName = song['name']?.toString() ?? name;
           DebugLog.d('从 JSON 中提取到名称: $scoreName');
         }
-      } catch (_) {}
-    }
+        bpm = (song['bpm'] as num?)?.toInt() ?? 500;
+        DebugLog.d('从 JSON 中提取到 BPM: $bpm');
+      }
+    } catch (_) {}
 
-    DebugLog.i('创建 Score: name=$scoreName, events=${events.length}');
+    DebugLog.i('创建 Score: name=$scoreName, bpm=$bpm, events=${events.length}');
     DebugLog.divider();
 
     return Score(
@@ -222,6 +226,7 @@ class ScoreParser {
       name: scoreName,
       rawText: rawText,
       events: events,
+      bpm: bpm,
     );
   }
 }
