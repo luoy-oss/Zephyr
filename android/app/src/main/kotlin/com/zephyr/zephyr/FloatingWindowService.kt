@@ -254,7 +254,7 @@ class FloatingWindowService : Service() {
             gravity = Gravity.CENTER_VERTICAL
             setPadding(0, dpToPx(8), 0, dpToPx(8))
         }
-        scoreRow.addView(TextView(this).apply { text = "🎵"; textSize = 16f })
+        scoreRow.addView(TextView(this).apply { text = "♪"; textSize = 18f })
         val scoreNameView = TextView(this).apply {
             text = selectedScoreName
             setTextColor(Color.parseColor("#BBBBBB"))
@@ -372,7 +372,7 @@ class FloatingWindowService : Service() {
             setPadding(0, dpToPx(4), 0, dpToPx(4))
         }
         effectRow.addView(TextView(this).apply {
-            text = "🎹 点击动效"
+            text = "♪ 点击动效"
             setTextColor(Color.WHITE)
             textSize = 13f
         })
@@ -398,7 +398,7 @@ class FloatingWindowService : Service() {
             setPadding(dpToPx(16), dpToPx(12), dpToPx(16), dpToPx(12))
             setOnClickListener { startCalibrationMode() }
         }
-        calibrateBtn.addView(TextView(this).apply { text = "🎯"; textSize = 16f })
+        calibrateBtn.addView(TextView(this).apply { text = "◎"; textSize = 18f; setTextColor(Color.parseColor("#FF5252")) })
         calibrateBtn.addView(TextView(this).apply {
             text = "  校准琴键位置"
             setTextColor(Color.WHITE)
@@ -422,9 +422,13 @@ class FloatingWindowService : Service() {
             bg.cornerRadius = dpToPx(8).toFloat()
             background = bg
             setPadding(dpToPx(16), dpToPx(12), dpToPx(16), dpToPx(12))
-            setOnClickListener { testTapAllKeys() }
+            setOnClickListener {
+                hideMainPanel()
+                showFloatingBall()
+                testTapAllKeys()
+            }
         }
-        testBtn.addView(TextView(this).apply { text = "🐛"; textSize = 16f })
+        testBtn.addView(TextView(this).apply { text = "⚡"; textSize = 16f; setTextColor(Color.parseColor("#FF9800")) })
         testBtn.addView(TextView(this).apply {
             text = "  调试：点击所有琴键"
             setTextColor(Color.parseColor("#FF9800"))
@@ -761,7 +765,7 @@ class FloatingWindowService : Service() {
                         showMainPanel()
                     }
                 }
-                item.addView(TextView(this).apply { text = "🎵"; textSize = 14f })
+                item.addView(TextView(this).apply { text = "♪"; textSize = 16f; setTextColor(Color.parseColor("#6C63FF")) })
                 item.addView(TextView(this).apply {
                     text = "  $name"
                     setTextColor(Color.WHITE)
