@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Zephyr</string>
+    <string name="accessibility_service_description">Zephyr 需要无障碍权限来模拟屏幕点击，用于在光遇游戏中自动弹琴。此权限仅用于演奏功能，不会收集任何个人信息。</string>
+</resources>

@@ -1,0 +1,87 @@
+name: Build Android
+
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+
+permissions:
+  contents: write
+
+env:
+  FLUTTER_VERSION: '3.24.5'
+
+jobs:
+  build-android:
+    name: Android (${{ matrix.target_arch }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - target_arch: arm64-v8a
+            build_args: '--target-platform android-arm64'
+          - target_arch: armeabi-v7a
+            build_args: '--target-platform android-arm'
+          - target_arch: x86_64
+            build_args: '--target-platform android-x64'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+
+      - run: flutter create --project-name zephyr --platforms android . || true
+      - run: flutter pub get
+      - run: flutter build apk --release --no-tree-shake-icons --split-per-abi ${{ matrix.build_args }}
+
+      - name: Rename APK
+        run: mv build/app/outputs/flutter-apk/*.apk build/app/outputs/flutter-apk/zephyr-${{ matrix.target_arch }}.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: apk-${{ matrix.target_arch }}
+          path: build/app/outputs/flutter-apk/zephyr-*.apk
+
+  release:
+    name: Create Release
+    needs: [build-android]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Get version from tag
+        id: version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.VERSION }}
+          name: "Zephyr ${{ steps.version.outputs.VERSION }}"
+          body: |
+            ## Zephyr ${{ steps.version.outputs.VERSION }}
+
+            光遇自动弹琴工具
+
+            ### 下载说明
+
+            | 架构 | 文件 |
+            |------|------|
+            | ARM64 | `zephyr-arm64-v8a.apk` |
+            | ARMv7 | `zephyr-armeabi-v7a.apk` |
+            | x86_64 | `zephyr-x86_64.apk` |
+
+            **安装**: 下载 APK 文件直接安装（需要开启未知来源安装）
+          files: |
+            artifacts/apk-arm64-v8a/zephyr-*.apk
+            artifacts/apk-armeabi-v7a/zephyr-*.apk
+            artifacts/apk-x86_64/zephyr-*.apk
+          draft: false
+          prerelease: false
