@@ -19,14 +19,7 @@ class TapEffectOverlay(context: Context) : View(context) {
         val label: String? = null
     )
 
-    private data class NextKeyIndicator(
-        val x: Float,  // 视图坐标
-        val y: Float,
-        val noteName: String
-    )
-
     private val effects = mutableListOf<TapEffect>()
-    private var nextKey: NextKeyIndicator? = null
     private val animators = mutableListOf<ValueAnimator>()
 
     // 视图在屏幕上的偏移量
@@ -45,13 +38,6 @@ class TapEffectOverlay(context: Context) : View(context) {
         textAlign = Paint.Align.CENTER
         typeface = Typeface.DEFAULT_BOLD
         setShadowLayer(4f, 0f, 0f, Color.BLACK)
-    }
-    private val nextKeyPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        style = Paint.Style.STROKE
-        strokeWidth = 5f
-    }
-    private val nextKeyFillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        style = Paint.Style.FILL
     }
 
     /** 屏幕坐标 → 视图坐标 */
@@ -81,17 +67,6 @@ class TapEffectOverlay(context: Context) : View(context) {
         startEffectAnimation(effect)
     }
 
-    /** 设置下一个按键指示器（接收屏幕坐标） */
-    fun setNextKeyIndicator(screenX: Float, screenY: Float, noteName: String) {
-        nextKey = NextKeyIndicator(screenToViewX(screenX), screenToViewY(screenY), noteName)
-        invalidate()
-    }
-
-    fun clearNextKeyIndicator() {
-        nextKey = null
-        invalidate()
-    }
-
     private fun startEffectAnimation(effect: TapEffect) {
         val animator = ValueAnimator.ofFloat(0f, 1f).apply {
             duration = effect.duration
@@ -116,24 +91,6 @@ class TapEffectOverlay(context: Context) : View(context) {
         getLocationOnScreen(screenOffset)
 
         val currentTime = System.currentTimeMillis()
-
-        // 绘制下一个按键预指示
-        nextKey?.let { nk ->
-            val breathe = (Math.sin(System.currentTimeMillis() / 300.0) * 0.3 + 0.7).toFloat()
-            val radius = 45f * breathe
-
-            nextKeyFillPaint.color = Color.argb(60, 76, 175, 80)
-            canvas.drawCircle(nk.x, nk.y, radius, nextKeyFillPaint)
-
-            nextKeyPaint.color = Color.argb(200, 76, 175, 80)
-            canvas.drawCircle(nk.x, nk.y, radius, nextKeyPaint)
-
-            textPaint.color = Color.argb(230, 76, 175, 80)
-            textPaint.textSize = 28f
-            canvas.drawText(nk.noteName, nk.x, nk.y + 10f, textPaint)
-
-            postInvalidateDelayed(16)
-        }
 
         // 绘制点击动效
         val iterator = effects.iterator()
@@ -184,6 +141,5 @@ class TapEffectOverlay(context: Context) : View(context) {
         animators.forEach { it.cancel() }
         animators.clear()
         effects.clear()
-        nextKey = null
     }
 }

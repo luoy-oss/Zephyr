@@ -95,18 +95,6 @@ class NativeService {
     });
   }
 
-  /// 预显示下一个待按按键
-  static Future<void> showNextKeyIndicator(double x, double y, String noteName) async {
-    await _floatingChannel.invokeMethod('showNextKeyIndicator', {
-      'x': x, 'y': y, 'noteName': noteName,
-    });
-  }
-
-  /// 清除下一个按键的预显示
-  static Future<void> clearNextKeyIndicator() async {
-    await _floatingChannel.invokeMethod('clearNextKeyIndicator');
-  }
-
   /// 显示倒计时覆盖层
   static Future<void> showCountdown(int seconds) async {
     await _floatingChannel.invokeMethod('showCountdown', {'seconds': seconds});

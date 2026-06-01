@@ -303,6 +303,8 @@ class FloatingWindowService : Service() {
         }
         controlRow.addView(createCircleButton("▶", "#4CAF50") {
             Log.d(TAG, "Play button clicked")
+            hideMainPanel()
+            showFloatingBall()
             onPlay?.invoke()
             updatePlayState(true)
         }, LinearLayout.LayoutParams(dpToPx(52), dpToPx(52)).apply { marginEnd = dpToPx(12) })
@@ -525,23 +527,6 @@ class FloatingWindowService : Service() {
                 showTapEffectOverlay()
             }
             tapEffectOverlay?.addDebugTapEffect(x, y, label)
-        }
-    }
-
-    fun showNextKey(x: Float, y: Float, noteName: String) {
-        val handler = android.os.Handler(mainLooper)
-        handler.post {
-            if (tapEffectOverlay == null) {
-                showTapEffectOverlay()
-            }
-            tapEffectOverlay?.setNextKeyIndicator(x, y, noteName)
-        }
-    }
-
-    fun clearNextKey() {
-        val handler = android.os.Handler(mainLooper)
-        handler.post {
-            tapEffectOverlay?.clearNextKeyIndicator()
         }
     }
 

@@ -1063,21 +1063,5 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
         }
       }
     }
-
-    // 预显示下一个待按按键
-    if (_isFloatingRunning) {
-      final nextEvent = ref.read(playbackProvider.notifier).nextEvent;
-      if (nextEvent != null && !nextEvent.isRest && nextEvent.notes.isNotEmpty) {
-        final nextNotes = nextEvent.notes;
-        for (final note in nextNotes) {
-          final nx = config.getX(note.col);
-          final ny = config.getY(note.row);
-          NativeService.showNextKeyIndicator(nx, ny, note.name);
-        }
-        DebugLog.d('  预显示下一个: ${nextNotes.map((n) => n.name).toList()}');
-      } else {
-        NativeService.clearNextKeyIndicator();
-      }
-    }
   }
 }

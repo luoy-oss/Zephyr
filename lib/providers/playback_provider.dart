@@ -131,26 +131,6 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
     }
   }
 
-  /// 获取当前待播放的事件（用于预显示下一个按键）
-  ScoreEvent? get currentEvent {
-    final scoreState = ref.read(scoreListProvider);
-    final score = scoreState.selectedScore;
-    if (score == null) return null;
-    final idx = state.currentEventIndex;
-    if (idx < 0 || idx >= score.events.length) return null;
-    return score.events[idx];
-  }
-
-  /// 获取下一个待播放的事件（用于预显示）
-  ScoreEvent? get nextEvent {
-    final scoreState = ref.read(scoreListProvider);
-    final score = scoreState.selectedScore;
-    if (score == null) return null;
-    final idx = state.nextEventIndex;
-    if (idx < 0 || idx >= score.events.length) return null;
-    return score.events[idx];
-  }
-
   /// 调度下一个事件（基于时间戳计算延迟）
   void _scheduleNextEvent() {
     final scoreState = ref.read(scoreListProvider);
@@ -183,9 +163,10 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
     final timeDiff = nextEvent.time - event.time;
 
     // time 值即为毫秒，直接用作延迟，除以速度倍率
-    final delayMs = (timeDiff / state.speed).round().clamp(10, 10000);
+    final speed = state.speed;
+    final delayMs = (timeDiff / speed).round().clamp(10, 10000);
 
-    DebugLog.d('播放 #${idx}: delay=${delayMs}ms (timeDiff=$timeDiff, speed=${state.speed})');
+    DebugLog.d('播放 #$idx: delay=${delayMs}ms (timeDiff=$timeDiff, speed=$speed)');
 
     state = state.copyWith(currentEventIndex: nextIdx);
 

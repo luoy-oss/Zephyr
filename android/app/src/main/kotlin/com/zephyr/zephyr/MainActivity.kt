@@ -130,17 +130,6 @@ class MainActivity : FlutterActivity() {
                     FloatingWindowService.instance?.showDebugTapAt(x, y, label)
                     result.success(true)
                 }
-                "showNextKeyIndicator" -> {
-                    val x = (call.argument<Number>("x"))?.toFloat() ?: 0f
-                    val y = (call.argument<Number>("y"))?.toFloat() ?: 0f
-                    val noteName = call.argument<String>("noteName") ?: ""
-                    FloatingWindowService.instance?.showNextKey(x, y, noteName)
-                    result.success(true)
-                }
-                "clearNextKeyIndicator" -> {
-                    FloatingWindowService.instance?.clearNextKey()
-                    result.success(true)
-                }
                 "showCountdown" -> {
                     val seconds = call.argument<Number>("seconds")?.toInt() ?: 3
                     FloatingWindowService.instance?.showCountdown(seconds)
