@@ -775,9 +775,65 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
               ),
             ],
           ),
+
+          // Debug 模式：测试点击按钮
+          if (ref.watch(debugModeProvider)) ...[
+            const SizedBox(height: 12),
+            const Divider(height: 1),
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                icon: const Icon(Icons.adb_rounded, size: 16),
+                label: const Text('调试：依次点击所有琴键'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: AppColors.warning,
+                  side: BorderSide(color: AppColors.warning.withOpacity(0.5)),
+                ),
+                onPressed: _testTapAllKeys,
+              ),
+            ),
+          ],
         ],
       ),
     );
+  }
+
+  /// 调试：依次点击所有 15 个琴键，验证校准是否正确
+  Future<void> _testTapAllKeys() async {
+    final config = ref.read(settingsProvider);
+
+    DebugLog.divider('调试点击测试');
+    DebugLog.i('开始依次点击所有琴键...');
+    DebugLog.d('配置: baseX=${config.baseX}, baseY=${config.baseY}, '
+        'colSpacing=${config.columnSpacing}, rowSpacing=${config.rowSpacing}');
+
+    const noteNames = [
+      ['-1', '-2', '-3', '-4', '-5'],
+      ['-6', '-7', '1', '2', '3'],
+      ['4', '5', '6', '7', '+1'],
+    ];
+
+    for (int row = 0; row < 3; row++) {
+      for (int col = 0; col < 5; col++) {
+        final x = config.getX(col);
+        final y = config.getY(row);
+        final name = noteNames[row][col];
+
+        DebugLog.d('$name (row=$row, col=$col) → ($x, $y)');
+
+        NativeService.tap(x, y, config.tapDurationMs);
+        if (_isFloatingRunning) {
+          NativeService.showTapEffect(x, y);
+        }
+
+        // 间隔 300ms 便于观察
+        await Future.delayed(const Duration(milliseconds: 300));
+      }
+    }
+
+    DebugLog.i('调试点击测试完成');
+    DebugLog.divider();
   }
 
   Widget _buildPlayButton({
@@ -962,28 +1018,36 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
 
     if (notes.isEmpty) return;
 
-    // Debug 日志：当前事件信息
+    // Debug 日志：配置参数
+    DebugLog.divider('按键事件 #${playbackState.currentEventIndex}');
+    DebugLog.d('配置: baseX=${config.baseX}, baseY=${config.baseY}, '
+        'colSpacing=${config.columnSpacing}, rowSpacing=${config.rowSpacing}');
+
     final noteNames = notes.map((n) => n.name).toList();
-    DebugLog.d('播放事件 #${playbackState.currentEventIndex}: $noteNames');
 
     if (notes.length == 1) {
       final note = notes[0];
       final x = config.getX(note.col);
       final y = config.getY(note.row);
 
-      DebugLog.d('  单音: ${note.name} → 坐标($x, $y)');
+      DebugLog.d('单音: ${note.name} (row=${note.row}, col=${note.col})');
+      DebugLog.d('  计算: x = ${config.baseX} + ${note.col} × ${config.columnSpacing} = $x');
+      DebugLog.d('  计算: y = ${config.baseY} + ${note.row} × ${config.rowSpacing} = $y');
+      DebugLog.d('  → 点击 ($x, $y)');
 
       NativeService.tap(x, y, config.tapDurationMs);
       if (_isFloatingRunning) {
         NativeService.showTapEffect(x, y);
       }
     } else {
-      final points = notes.map<List<double>>((note) => [
-        config.getX(note.col),
-        config.getY(note.row),
-      ]).toList();
-
-      DebugLog.d('  和弦: $noteNames → 坐标$points');
+      DebugLog.d('和弦: $noteNames');
+      final points = <List<double>>[];
+      for (final note in notes) {
+        final x = config.getX(note.col);
+        final y = config.getY(note.row);
+        points.add([x, y]);
+        DebugLog.d('  ${note.name} (row=${note.row}, col=${note.col}) → ($x, $y)');
+      }
 
       NativeService.tapMultiple(points, config.tapDurationMs);
       if (_isFloatingRunning) {
