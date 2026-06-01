@@ -141,6 +141,20 @@ class MainActivity : FlutterActivity() {
                     FloatingWindowService.instance?.clearNextKey()
                     result.success(true)
                 }
+                "showCountdown" -> {
+                    val seconds = call.argument<Number>("seconds")?.toInt() ?: 3
+                    FloatingWindowService.instance?.showCountdown(seconds)
+                    result.success(true)
+                }
+                "updateCountdown" -> {
+                    val seconds = call.argument<Number>("seconds")?.toInt() ?: 0
+                    FloatingWindowService.instance?.updateCountdown(seconds)
+                    result.success(true)
+                }
+                "hideCountdown" -> {
+                    FloatingWindowService.instance?.hideCountdown()
+                    result.success(true)
+                }
                 else -> result.notImplemented()
             }
         }

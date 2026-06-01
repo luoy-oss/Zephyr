@@ -167,6 +167,20 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
     ref.listen(playbackProvider, (prev, next) {
       if (_isFloatingRunning) {
         NativeService.updateProgress(next.currentEventIndex, next.totalEvents);
+
+        // 倒计时同步到悬浮窗覆盖层
+        if (next.status == PlaybackStatus.countdown) {
+          if (prev?.status != PlaybackStatus.countdown) {
+            // 倒计时开始
+            NativeService.showCountdown(next.countdownRemaining);
+          } else {
+            // 倒计时更新
+            NativeService.updateCountdown(next.countdownRemaining);
+          }
+        } else if (prev?.status == PlaybackStatus.countdown) {
+          // 倒计时结束
+          NativeService.hideCountdown();
+        }
       }
     });
 

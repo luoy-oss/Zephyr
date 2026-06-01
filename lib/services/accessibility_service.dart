@@ -107,6 +107,21 @@ class NativeService {
     await _floatingChannel.invokeMethod('clearNextKeyIndicator');
   }
 
+  /// 显示倒计时覆盖层
+  static Future<void> showCountdown(int seconds) async {
+    await _floatingChannel.invokeMethod('showCountdown', {'seconds': seconds});
+  }
+
+  /// 更新倒计时
+  static Future<void> updateCountdown(int seconds) async {
+    await _floatingChannel.invokeMethod('updateCountdown', {'seconds': seconds});
+  }
+
+  /// 隐藏倒计时覆盖层
+  static Future<void> hideCountdown() async {
+    await _floatingChannel.invokeMethod('hideCountdown');
+  }
+
   /// 设置悬浮窗回调
   static Future<void> setFloatingCallbacks({
     required Function() onPlay,

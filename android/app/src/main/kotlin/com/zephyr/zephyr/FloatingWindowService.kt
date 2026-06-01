@@ -46,10 +46,12 @@ class FloatingWindowService : Service() {
     private var mainPanel: View? = null
     private var calibrationView: CalibrationOverlayView? = null
     private var tapEffectOverlay: TapEffectOverlay? = null
+    private var countdownOverlay: View? = null
 
     private var isBallShowing = false
     private var isMainPanelShowing = false
     private var isCalibrating = false
+    private var isCountdownShowing = false
 
     // 当前状态
     private var currentSpeed = 1.0f
@@ -534,6 +536,87 @@ class FloatingWindowService : Service() {
         tapEffectOverlay = null
     }
 
+    // ========== 倒计时覆盖层 ==========
+
+    fun showCountdown(seconds: Int) {
+        val handler = android.os.Handler(mainLooper)
+        handler.post {
+            hideCountdown()
+            showCountdownOverlay(seconds)
+        }
+    }
+
+    fun updateCountdown(seconds: Int) {
+        val handler = android.os.Handler(mainLooper)
+        handler.post {
+            if (seconds <= 0) {
+                hideCountdown()
+            } else {
+                // 更新倒计时文字
+                countdownOverlay?.findViewWithTag<TextView>("countdownText")?.text = "$seconds"
+            }
+        }
+    }
+
+    fun hideCountdown() {
+        try { countdownOverlay?.let { windowManager?.removeView(it) } } catch (_: Exception) {}
+        countdownOverlay = null
+        isCountdownShowing = false
+    }
+
+    private fun showCountdownOverlay(seconds: Int) {
+        val overlay = FrameLayout(this).apply {
+            setBackgroundColor(Color.argb(160, 0, 0, 0))
+        }
+
+        val textContainer = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = android.view.Gravity.CENTER
+        }
+
+        // 倒计时数字
+        textContainer.addView(TextView(this).apply {
+            text = "$seconds"
+            setTextColor(Color.WHITE)
+            textSize = 120f
+            gravity = android.view.Gravity.CENTER
+            typeface = Typeface.DEFAULT_BOLD
+            tag = "countdownText"
+        })
+
+        // 提示文字
+        textContainer.addView(TextView(this).apply {
+            text = "秒后开始演奏"
+            setTextColor(Color.parseColor("#BBBBBB"))
+            textSize = 20f
+            gravity = android.view.Gravity.CENTER
+            setPadding(0, dpToPx(8), 0, 0)
+        })
+
+        overlay.addView(textContainer, FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.MATCH_PARENT,
+            FrameLayout.LayoutParams.MATCH_PARENT
+        ))
+
+        countdownOverlay = overlay
+        val params = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                    WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
+                    WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+            PixelFormat.TRANSPARENT
+        )
+
+        try {
+            windowManager?.addView(countdownOverlay, params)
+            isCountdownShowing = true
+        } catch (e: Exception) {
+            Log.e(TAG, "Error showing countdown overlay", e)
+        }
+    }
+
     private fun updatePlayState(playing: Boolean) {
         isPlaying = playing
         if (!playing) {
@@ -745,6 +828,7 @@ class FloatingWindowService : Service() {
         isRunning = false
         stopCalibrationMode()
         hideTapEffectOverlay()
+        hideCountdown()
         hideMainPanel()
         hideFloatingBall()
         instance = null
