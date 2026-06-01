@@ -10,8 +10,8 @@ import android.view.View
 /**
  * 校准覆盖层 - 两步校准流程
  *
- * 第一步：用户拖动十字准心定位第一个琴键（-1）的位置
- * 第二步：显示完整 3x5 网格，用户微调行/列间距
+ * 第一步：用户点击屏幕放置准心，然后拖动微调到「-1」琴键中心
+ * 第二步：显示完整 3x5 网格，用滑条调整行/列间距
  */
 @SuppressLint("ViewConstructor")
 class CalibrationOverlayView(
@@ -31,8 +31,11 @@ class CalibrationOverlayView(
         arrayOf("4", "5", "6", "7", "+1")
     )
 
-    // 当前步骤：1 = 定位第一个琴键，2 = 调整间距
+    // 当前步骤
     private var step = 1
+
+    // 第一步：准心是否已放置
+    private var crosshairPlaced = false
 
     // 第一步确认后锁定的基准位置
     private var lockedX = baseX
@@ -85,10 +88,12 @@ class CalibrationOverlayView(
         textSize = 24f
         textAlign = Paint.Align.CENTER
     }
-    private val smallHintPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.parseColor("#888888")
-        textSize = 20f
-        textAlign = Paint.Align.CENTER
+    private val coordPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.parseColor("#FFEB3B")
+        textSize = 22f
+        textAlign = Paint.Align.LEFT
+        typeface = Typeface.MONOSPACE
+        setShadowLayer(4f, 0f, 0f, Color.BLACK)
     }
     private val panelPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.parseColor("#E61A1A1A")
@@ -111,6 +116,28 @@ class CalibrationOverlayView(
         color = Color.argb(120, 0, 0, 0)
     }
 
+    // 滑条画笔
+    private val sliderTrackPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.parseColor("#555555")
+        strokeWidth = 6f
+        strokeCap = Paint.Cap.ROUND
+    }
+    private val sliderFillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.parseColor("#6C63FF")
+        strokeWidth = 6f
+        strokeCap = Paint.Cap.ROUND
+    }
+    private val sliderThumbPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.WHITE
+        style = Paint.Style.FILL
+    }
+    private val sliderValuePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.WHITE
+        textSize = 28f
+        textAlign = Paint.Align.CENTER
+        typeface = Typeface.DEFAULT_BOLD
+    }
+
     // 拖拽状态
     private var isDragging = false
     private var lastTouchX = 0f
@@ -120,27 +147,35 @@ class CalibrationOverlayView(
     private var scaleDetector: ScaleGestureDetector
     private var isScaling = false
 
+    // 滑条状态
+    private var isDraggingColSlider = false
+    private var isDraggingRowSlider = false
+
     // 底部面板
-    private val panelHeight = 280f
+    private val panelHeight = 320f
     private var panelTop = 0f
 
     // 按钮区域
-    private var colMinusRect = RectF()
-    private var colPlusRect = RectF()
-    private var rowMinusRect = RectF()
-    private var rowPlusRect = RectF()
     private var nextBtnRect = RectF()
     private var backBtnRect = RectF()
     private var confirmBtnRect = RectF()
     private var cancelBtnRect = RectF()
+
+    // 滑条区域
+    private var colSliderRect = RectF()
+    private var rowSliderRect = RectF()
+
+    // 滑条范围
+    private val spacingMin = 40f
+    private val spacingMax = 500f
 
     init {
         scaleDetector = ScaleGestureDetector(context, object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
             override fun onScale(detector: ScaleGestureDetector): Boolean {
                 if (step != 2) return false
                 val scaleFactor = detector.scaleFactor
-                colSpacing = (colSpacing * scaleFactor).coerceIn(40f, 500f)
-                rowSpacing = (rowSpacing * scaleFactor).coerceIn(40f, 500f)
+                colSpacing = (colSpacing * scaleFactor).coerceIn(spacingMin, spacingMax)
+                rowSpacing = (rowSpacing * scaleFactor).coerceIn(spacingMin, spacingMax)
                 invalidate()
                 return true
             }
@@ -160,53 +195,61 @@ class CalibrationOverlayView(
         val h = height.toFloat()
         panelTop = h - panelHeight
 
-        if (step == 1) {
-            drawStep1(canvas, w, h)
-        } else {
-            drawStep2(canvas, w, h)
-        }
+        if (step == 1) drawStep1(canvas, w, h)
+        else drawStep2(canvas, w, h)
     }
 
-    // ===== 第一步：定位第一个琴键 =====
+    // ===== 第一步：点击放置准心，拖动微调 =====
     private fun drawStep1(canvas: Canvas, w: Float, h: Float) {
-        // 半透明遮罩（突出准心位置）
         canvas.drawRect(0f, 0f, w, h, dimPaint)
 
-        // 十字准心
-        val cx = baseX
-        val cy = baseY
-        val crossLen = 40f
-        val gap = 15f
-
-        // 十字线
-        crosshairPaint.strokeWidth = 3f
-        canvas.drawLine(cx - crossLen, cy, cx - gap, cy, crosshairPaint)
-        canvas.drawLine(cx + gap, cy, cx + crossLen, cy, crosshairPaint)
-        canvas.drawLine(cx, cy - crossLen, cx, cy - gap, crosshairPaint)
-        canvas.drawLine(cx, cy + gap, cx, cy + crossLen, crosshairPaint)
-
-        // 外圈
-        crosshairCirclePaint.color = Color.parseColor("#FF5252")
-        canvas.drawCircle(cx, cy, 30f, crosshairCirclePaint)
-        canvas.drawCircle(cx, cy, 60f, crosshairCirclePaint.apply { strokeWidth = 2f })
-
-        // 中心点
-        val centerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.parseColor("#FF5252")
-            style = Paint.Style.FILL
-        }
-        canvas.drawCircle(cx, cy, 5f, centerPaint)
-
-        // 标签
-        titlePaint.color = Color.parseColor("#FF5252")
-        canvas.drawText("-1", cx, cy - 70f, titlePaint)
-
         // 顶部提示
-        canvas.drawText("第一步：定位第一个琴键", w / 2f, 60f, titlePaint.apply { color = Color.WHITE })
-        canvas.drawText("拖动红色准心到游戏中的「-1」琴键中心", w / 2f, 100f, hintPaint)
-        canvas.drawText("这是所有琴键的基准位置，务必精确对齐", w / 2f, 135f, smallHintPaint)
+        titlePaint.color = Color.WHITE
+        if (!crosshairPlaced) {
+            canvas.drawText("第一步：定位「-1」琴键", w / 2f, 60f, titlePaint)
+            canvas.drawText("点击游戏中的「-1」琴键位置", w / 2f, 100f, hintPaint)
+        } else {
+            canvas.drawText("拖动准心精确对齐「-1」琴键中心", w / 2f, 60f, titlePaint)
+        }
 
-        // 底部面板（只有下一步和取消）
+        // 只在准心已放置时绘制
+        if (crosshairPlaced) {
+            val cx = baseX
+            val cy = baseY
+            val crossLen = 40f
+            val gap = 15f
+
+            // 十字线
+            crosshairPaint.strokeWidth = 3f
+            canvas.drawLine(cx - crossLen, cy, cx - gap, cy, crosshairPaint)
+            canvas.drawLine(cx + gap, cy, cx + crossLen, cy, crosshairPaint)
+            canvas.drawLine(cx, cy - crossLen, cx, cy - gap, crosshairPaint)
+            canvas.drawLine(cx, cy + gap, cx, cy + crossLen, crosshairPaint)
+
+            // 外圈
+            crosshairCirclePaint.color = Color.parseColor("#FF5252")
+            crosshairCirclePaint.strokeWidth = 3f
+            canvas.drawCircle(cx, cy, 30f, crosshairCirclePaint)
+            crosshairCirclePaint.strokeWidth = 2f
+            canvas.drawCircle(cx, cy, 60f, crosshairCirclePaint)
+
+            // 中心点
+            val centerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = Color.parseColor("#FF5252")
+                style = Paint.Style.FILL
+            }
+            canvas.drawCircle(cx, cy, 5f, centerPaint)
+
+            // 音符标签
+            titlePaint.color = Color.parseColor("#FF5252")
+            canvas.drawText("-1", cx, cy - 70f, titlePaint)
+
+            // 实时坐标显示
+            canvas.drawText("X: ${cx.toInt()}", 20f, 160f, coordPaint)
+            canvas.drawText("Y: ${cy.toInt()}", 20f, 188f, coordPaint)
+        }
+
+        // 底部面板
         canvas.drawRect(0f, panelTop, w, h, panelPaint)
 
         val btnY = panelTop + panelHeight / 2f - 35f
@@ -217,29 +260,32 @@ class CalibrationOverlayView(
 
         btnPaint.color = Color.parseColor("#616161")
         canvas.drawRoundRect(cancelBtnRect, 14f, 14f, btnPaint)
-        btnPaint.color = Color.parseColor("#388E3C")
+
+        // 下一步按钮：准心已放置时才可点击
+        btnPaint.color = if (crosshairPlaced) Color.parseColor("#388E3C") else Color.parseColor("#333333")
         canvas.drawRoundRect(nextBtnRect, 14f, 14f, btnPaint)
 
         canvas.drawText("取消", cancelBtnRect.centerX(), cancelBtnRect.centerY() + 12f, btnTextPaint)
+        val nextColor = if (crosshairPlaced) Color.WHITE else Color.parseColor("#666666")
+        btnTextPaint.color = nextColor
         canvas.drawText("下一步 ▸", nextBtnRect.centerX(), nextBtnRect.centerY() + 12f, btnTextPaint)
+        btnTextPaint.color = Color.WHITE // 恢复
     }
 
-    // ===== 第二步：调整琴键间距 =====
+    // ===== 第二步：滑条调整间距 =====
     private fun drawStep2(canvas: Canvas, w: Float, h: Float) {
-        // 半透明遮罩（比第一步轻，但保证琴键可见）
         val dimPaint2 = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.argb(80, 0, 0, 0)
         }
         canvas.drawRect(0f, 0f, w, h, dimPaint2)
 
-        // 绘制完整 3x5 网格
+        // 绘制 3x5 网格
         for (row in 0..2) {
             for (col in 0..4) {
                 val x = lockedX + col * colSpacing
                 val y = lockedY + row * rowSpacing
                 val radius = 42f
 
-                // 第一个琴键用红色高亮
                 if (row == 0 && col == 0) {
                     canvas.drawCircle(x, y, radius + 4f, firstKeyPaint)
                     canvas.drawCircle(x, y, radius + 4f, firstKeyBorderPaint)
@@ -251,68 +297,53 @@ class CalibrationOverlayView(
             }
         }
 
-        // 连接线（帮助对齐视觉）
+        // 连接线
         val linePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.argb(80, 108, 99, 255)
             strokeWidth = 2f
         }
         for (row in 0..2) {
-            canvas.drawLine(
-                lockedX, lockedY + row * rowSpacing,
-                lockedX + 4 * colSpacing, lockedY + row * rowSpacing,
-                linePaint
-            )
+            canvas.drawLine(lockedX, lockedY + row * rowSpacing,
+                lockedX + 4 * colSpacing, lockedY + row * rowSpacing, linePaint)
         }
         for (col in 0..4) {
-            canvas.drawLine(
-                lockedX + col * colSpacing, lockedY,
-                lockedX + col * colSpacing, lockedY + 2 * rowSpacing,
-                linePaint
-            )
+            canvas.drawLine(lockedX + col * colSpacing, lockedY,
+                lockedX + col * colSpacing, lockedY + 2 * rowSpacing, linePaint)
         }
 
         // 顶部提示
-        canvas.drawText("第二步：调整琴键间距", w / 2f, 60f, titlePaint.apply { color = Color.WHITE })
-        canvas.drawText("使用下方按钮或双指缩放调整行/列间距", w / 2f, 100f, hintPaint)
-        canvas.drawText("红色「-1」锁定在第一步定位的位置，不可拖动", w / 2f, 135f, smallHintPaint)
+        titlePaint.color = Color.WHITE
+        canvas.drawText("第二步：调整琴键间距", w / 2f, 60f, titlePaint)
+        canvas.drawText("拖动滑条或双指缩放调整间距", w / 2f, 100f, hintPaint)
+
+        // 坐标显示
+        canvas.drawText("-1: (${lockedX.toInt()}, ${lockedY.toInt()})", 20f, 140f, coordPaint)
 
         // ===== 底部控制面板 =====
         canvas.drawRect(0f, panelTop, w, h, panelPaint)
 
-        val panelCenterY = panelTop + 40f
+        val padding = 40f
+        val sliderLeft = padding + 80f
+        val sliderRight = w - padding - 80f
+        val sliderW = sliderRight - sliderLeft
 
-        // 列间距控制
-        val colLabelX = w * 0.25f
-        canvas.drawText("列间距", colLabelX, panelCenterY, labelTextPaint)
-        canvas.drawText("${colSpacing.toInt()}", colLabelX, panelCenterY + 35f, btnTextPaint)
+        // 列间距滑条
+        val colY = panelTop + 45f
+        canvas.drawText("列间距", padding + 30f, colY + 6f, labelTextPaint)
+        canvas.drawText("${colSpacing.toInt()}", sliderRight + 45f, colY + 6f, sliderValuePaint)
 
-        val btnW = 70f
-        val btnH = 55f
-        val btnY1 = panelCenterY + 50f
+        colSliderRect.set(sliderLeft, colY - 3f, sliderRight, colY + 3f)
+        drawSlider(canvas, sliderLeft, sliderRight, colY, colSpacing, spacingMin, spacingMax)
 
-        colMinusRect.set(colLabelX - 85f, btnY1, colLabelX - 15f, btnY1 + btnH)
-        colPlusRect.set(colLabelX + 15f, btnY1, colLabelX + 85f, btnY1 + btnH)
+        // 行间距滑条
+        val rowY = panelTop + 120f
+        canvas.drawText("行间距", padding + 30f, rowY + 6f, labelTextPaint)
+        canvas.drawText("${rowSpacing.toInt()}", sliderRight + 45f, rowY + 6f, sliderValuePaint)
 
-        btnPaint.color = Color.parseColor("#444444")
-        canvas.drawRoundRect(colMinusRect, 10f, 10f, btnPaint)
-        canvas.drawRoundRect(colPlusRect, 10f, 10f, btnPaint)
-        canvas.drawText("−", colMinusRect.centerX(), colMinusRect.centerY() + 12f, btnTextPaint)
-        canvas.drawText("+", colPlusRect.centerX(), colPlusRect.centerY() + 12f, btnTextPaint)
+        rowSliderRect.set(sliderLeft, rowY - 3f, sliderRight, rowY + 3f)
+        drawSlider(canvas, sliderLeft, sliderRight, rowY, rowSpacing, spacingMin, spacingMax)
 
-        // 行间距控制
-        val rowLabelX = w * 0.75f
-        canvas.drawText("行间距", rowLabelX, panelCenterY, labelTextPaint)
-        canvas.drawText("${rowSpacing.toInt()}", rowLabelX, panelCenterY + 35f, btnTextPaint)
-
-        rowMinusRect.set(rowLabelX - 85f, btnY1, rowLabelX - 15f, btnY1 + btnH)
-        rowPlusRect.set(rowLabelX + 15f, btnY1, rowLabelX + 85f, btnY1 + btnH)
-
-        canvas.drawRoundRect(rowMinusRect, 10f, 10f, btnPaint)
-        canvas.drawRoundRect(rowPlusRect, 10f, 10f, btnPaint)
-        canvas.drawText("−", rowMinusRect.centerX(), rowMinusRect.centerY() + 12f, btnTextPaint)
-        canvas.drawText("+", rowPlusRect.centerX(), rowPlusRect.centerY() + 12f, btnTextPaint)
-
-        // 底部按钮：返回 / 确认
+        // 底部按钮
         val btnY2 = panelTop + panelHeight - 85f
         val btnWidth = (w - 80f) / 2
 
@@ -328,34 +359,73 @@ class CalibrationOverlayView(
         canvas.drawText("确认", confirmBtnRect.centerX(), confirmBtnRect.centerY() + 12f, btnTextPaint)
     }
 
+    private fun drawSlider(canvas: Canvas, left: Float, right: Float, y: Float,
+                            value: Float, min: Float, max: Float) {
+        val ratio = (value - min) / (max - min)
+        val thumbX = left + ratio * (right - left)
+
+        // 轨道背景
+        canvas.drawLine(left, y, right, y, sliderTrackPaint)
+        // 已填充部分
+        canvas.drawLine(left, y, thumbX, y, sliderFillPaint)
+        // 滑块
+        canvas.drawCircle(thumbX, y, 16f, sliderThumbPaint)
+    }
+
     @SuppressLint("ClickableViewAccessibility")
     override fun onTouchEvent(event: MotionEvent): Boolean {
         scaleDetector.onTouchEvent(event)
         if (isScaling) return true
 
+        val x = event.x
+        val y = event.y
+
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
-                val x = event.x
-                val y = event.y
-
-                // 底部面板按钮
+                // 底部面板区域
                 if (y >= panelTop) {
-                    handlePanelTouch(x, y)
+                    handlePanelTouchDown(x, y)
                     return true
                 }
 
-                // 第一步：触摸任意位置开始拖动准心
                 if (step == 1) {
-                    isDragging = true
-                    lastTouchX = x
-                    lastTouchY = y
+                    // 第一步：点击放置准心 或 开始拖动已放置的准心
+                    if (!crosshairPlaced) {
+                        // 点击放置
+                        baseX = x
+                        baseY = y
+                        crosshairPlaced = true
+                        invalidate()
+                    } else {
+                        // 开始拖动
+                        isDragging = true
+                        lastTouchX = x
+                        lastTouchY = y
+                    }
                     return true
                 }
-                // 第二步：不允许拖动，网格锁定在第一步位置
-                // 只能通过底部面板按钮或双指缩放调整间距
             }
 
             MotionEvent.ACTION_MOVE -> {
+                // 滑条拖动
+                if (isDraggingColSlider) {
+                    val sliderLeft = 40f + 80f
+                    val sliderRight = width.toFloat() - 40f - 80f
+                    val ratio = ((x - sliderLeft) / (sliderRight - sliderLeft)).coerceIn(0f, 1f)
+                    colSpacing = spacingMin + ratio * (spacingMax - spacingMin)
+                    invalidate()
+                    return true
+                }
+                if (isDraggingRowSlider) {
+                    val sliderLeft = 40f + 80f
+                    val sliderRight = width.toFloat() - 40f - 80f
+                    val ratio = ((x - sliderLeft) / (sliderRight - sliderLeft)).coerceIn(0f, 1f)
+                    rowSpacing = spacingMin + ratio * (spacingMax - spacingMin)
+                    invalidate()
+                    return true
+                }
+
+                // 第一步准心拖动
                 if (isDragging && step == 1 && event.pointerCount == 1) {
                     baseX += event.x - lastTouchX
                     baseY += event.y - lastTouchY
@@ -368,17 +438,18 @@ class CalibrationOverlayView(
 
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                 isDragging = false
+                isDraggingColSlider = false
+                isDraggingRowSlider = false
             }
         }
         return true
     }
 
-    private fun handlePanelTouch(x: Float, y: Float) {
+    private fun handlePanelTouchDown(x: Float, y: Float) {
         if (step == 1) {
-            // 第一步面板：取消 / 下一步
             when {
                 cancelBtnRect.contains(x, y) -> onCancel?.invoke()
-                nextBtnRect.contains(x, y) -> {
+                nextBtnRect.contains(x, y) && crosshairPlaced -> {
                     lockedX = baseX
                     lockedY = baseY
                     step = 2
@@ -386,22 +457,26 @@ class CalibrationOverlayView(
                 }
             }
         } else {
-            // 第二步面板：间距按钮 / 返回 / 确认
+            // 滑条触摸检测（滑条上下各 30px 的范围）
+            val sliderLeft = 40f + 80f
+            val sliderRight = width.toFloat() - 40f - 80f
+
+            val colY = panelTop + 45f
+            val rowY = panelTop + 120f
+
             when {
-                colMinusRect.contains(x, y) -> {
-                    colSpacing = (colSpacing - 10f).coerceAtLeast(40f)
+                // 列间距滑条
+                y in (colY - 30f)..(colY + 30f) && x in sliderLeft..sliderRight -> {
+                    isDraggingColSlider = true
+                    val ratio = ((x - sliderLeft) / (sliderRight - sliderLeft)).coerceIn(0f, 1f)
+                    colSpacing = spacingMin + ratio * (spacingMax - spacingMin)
                     invalidate()
                 }
-                colPlusRect.contains(x, y) -> {
-                    colSpacing = (colSpacing + 10f).coerceAtMost(500f)
-                    invalidate()
-                }
-                rowMinusRect.contains(x, y) -> {
-                    rowSpacing = (rowSpacing - 10f).coerceAtLeast(40f)
-                    invalidate()
-                }
-                rowPlusRect.contains(x, y) -> {
-                    rowSpacing = (rowSpacing + 10f).coerceAtMost(500f)
+                // 行间距滑条
+                y in (rowY - 30f)..(rowY + 30f) && x in sliderLeft..sliderRight -> {
+                    isDraggingRowSlider = true
+                    val ratio = ((x - sliderLeft) / (sliderRight - sliderLeft)).coerceIn(0f, 1f)
+                    rowSpacing = spacingMin + ratio * (spacingMax - spacingMin)
                     invalidate()
                 }
                 backBtnRect.contains(x, y) -> {
