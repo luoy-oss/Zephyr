@@ -51,27 +51,28 @@ class CalibrationOverlayView(
     }
     private val keyPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.FILL
-        color = Color.argb(100, 108, 99, 255)
+        color = Color.argb(200, 30, 30, 50)
     }
     private val keyBorderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
-        strokeWidth = 3f
+        strokeWidth = 4f
         color = Color.parseColor("#6C63FF")
     }
     private val firstKeyPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.FILL
-        color = Color.argb(180, 255, 82, 82)
+        color = Color.argb(220, 255, 82, 82)
     }
     private val firstKeyBorderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
-        strokeWidth = 4f
+        strokeWidth = 5f
         color = Color.parseColor("#FF5252")
     }
     private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.WHITE
-        textSize = 28f
+        textSize = 32f
         textAlign = Paint.Align.CENTER
         typeface = Typeface.DEFAULT_BOLD
+        setShadowLayer(6f, 0f, 0f, Color.BLACK)
     }
     private val titlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.WHITE
@@ -225,12 +226,18 @@ class CalibrationOverlayView(
 
     // ===== 第二步：调整琴键间距 =====
     private fun drawStep2(canvas: Canvas, w: Float, h: Float) {
+        // 半透明遮罩（比第一步轻，但保证琴键可见）
+        val dimPaint2 = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.argb(80, 0, 0, 0)
+        }
+        canvas.drawRect(0f, 0f, w, h, dimPaint2)
+
         // 绘制完整 3x5 网格
         for (row in 0..2) {
             for (col in 0..4) {
                 val x = lockedX + col * colSpacing
                 val y = lockedY + row * rowSpacing
-                val radius = 36f
+                val radius = 42f
 
                 // 第一个琴键用红色高亮
                 if (row == 0 && col == 0) {
@@ -246,8 +253,8 @@ class CalibrationOverlayView(
 
         // 连接线（帮助对齐视觉）
         val linePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.argb(40, 108, 99, 255)
-            strokeWidth = 1f
+            color = Color.argb(80, 108, 99, 255)
+            strokeWidth = 2f
         }
         for (row in 0..2) {
             canvas.drawLine(
@@ -266,7 +273,8 @@ class CalibrationOverlayView(
 
         // 顶部提示
         canvas.drawText("第二步：调整琴键间距", w / 2f, 60f, titlePaint.apply { color = Color.WHITE })
-        canvas.drawText("双指缩放 或 使用下方按钮微调间距", w / 2f, 100f, hintPaint)
+        canvas.drawText("拖动网格整体位置 · 双指缩放或按钮微调间距", w / 2f, 100f, hintPaint)
+        canvas.drawText("红色「-1」为第一步定位的基准点", w / 2f, 135f, smallHintPaint)
 
         // ===== 底部控制面板 =====
         canvas.drawRect(0f, panelTop, w, h, panelPaint)
