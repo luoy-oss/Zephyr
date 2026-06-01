@@ -39,6 +39,9 @@ class FloatingWindowService : Service() {
         var onSelectScore: ((String) -> Unit)? = null
         var onCalibrationChanged: ((Float, Float, Float, Float) -> Unit)? = null
         var onPanelOpened: (() -> Unit)? = null
+        var onTapDurationChanged: ((Int) -> Unit)? = null
+        var onCountdownChanged: ((Int) -> Unit)? = null
+        var onDebugModeChanged: ((Boolean) -> Unit)? = null
     }
 
     private var windowManager: WindowManager? = null
@@ -58,6 +61,9 @@ class FloatingWindowService : Service() {
     private var selectedScoreName = "未选择"
     private var isPlaying = false
     private var showTapEffect = true
+    private var tapDurationMs = 100
+    private var countdownSeconds = 3
+    private var debugMode = false
 
     // 播放进度
     private var progressCurrent = 0
@@ -387,6 +393,88 @@ class FloatingWindowService : Service() {
             }
         })
         contentLayout.addView(effectRow)
+        contentLayout.addView(createDivider())
+
+        // 点击时长滑条
+        val tapDurLabel = TextView(this).apply {
+            text = "点击时长: ${tapDurationMs}ms"
+            setTextColor(Color.WHITE)
+            textSize = 13f
+        }
+        contentLayout.addView(tapDurLabel)
+
+        val tapDurBar = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, dpToPx(4), 0, dpToPx(8))
+        }
+        tapDurBar.addView(SeekBar(this).apply {
+            max = 45  // 50-500ms, step 10
+            progress = (tapDurationMs - 50) / 10
+            setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                override fun onProgressChanged(sb: SeekBar?, progress: Int, fromUser: Boolean) {
+                    tapDurationMs = 50 + progress * 10
+                    tapDurLabel.text = "点击时长: ${tapDurationMs}ms"
+                }
+                override fun onStartTrackingTouch(sb: SeekBar?) {}
+                override fun onStopTrackingTouch(sb: SeekBar?) {
+                    onTapDurationChanged?.invoke(tapDurationMs)
+                }
+            })
+        }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+        contentLayout.addView(tapDurBar)
+        contentLayout.addView(createDivider())
+
+        // 倒计时滑条
+        val countdownLabel = TextView(this).apply {
+            text = "倒计时: ${countdownSeconds}秒"
+            setTextColor(Color.WHITE)
+            textSize = 13f
+        }
+        contentLayout.addView(countdownLabel)
+
+        val countdownBar = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, dpToPx(4), 0, dpToPx(8))
+        }
+        countdownBar.addView(SeekBar(this).apply {
+            max = 15  // 0-15 seconds
+            progress = countdownSeconds
+            setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                override fun onProgressChanged(sb: SeekBar?, progress: Int, fromUser: Boolean) {
+                    countdownSeconds = progress
+                    countdownLabel.text = "倒计时: ${countdownSeconds}秒"
+                }
+                override fun onStartTrackingTouch(sb: SeekBar?) {}
+                override fun onStopTrackingTouch(sb: SeekBar?) {
+                    onCountdownChanged?.invoke(countdownSeconds)
+                }
+            })
+        }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+        contentLayout.addView(countdownBar)
+        contentLayout.addView(createDivider())
+
+        // Debug 模式开关
+        val debugRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, dpToPx(4), 0, dpToPx(4))
+        }
+        debugRow.addView(TextView(this).apply {
+            text = "Debug 日志"
+            setTextColor(Color.WHITE)
+            textSize = 13f
+        })
+        debugRow.addView(View(this), LinearLayout.LayoutParams(0, 0, 1f))
+        debugRow.addView(Switch(this).apply {
+            isChecked = debugMode
+            setOnCheckedChangeListener { _, checked ->
+                debugMode = checked
+                onDebugModeChanged?.invoke(checked)
+            }
+        })
+        contentLayout.addView(debugRow)
         contentLayout.addView(createDivider())
 
         // 校准按钮
@@ -828,6 +916,18 @@ class FloatingWindowService : Service() {
 
     fun updateConfig(bx: Float, by: Float, cs: Float, rs: Float) {
         baseX = bx; baseY = by; colSpacing = cs; rowSpacing = rs
+    }
+
+    fun updateTapDuration(ms: Int) {
+        tapDurationMs = ms
+    }
+
+    fun updateCountdown(seconds: Int) {
+        countdownSeconds = seconds
+    }
+
+    fun updateDebugMode(enabled: Boolean) {
+        debugMode = enabled
     }
 
     // ========== 辅助方法 ==========

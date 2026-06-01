@@ -15,7 +15,6 @@ import '../providers/settings_provider.dart';
 import '../services/accessibility_service.dart';
 import '../widgets/score_card.dart';
 import '../widgets/glass_container.dart';
-import 'settings_screen.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
@@ -110,6 +109,18 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
           DebugLog.d('悬浮窗面板打开，自动暂停播放');
         }
       },
+      onTapDurationChanged: (ms) {
+        ref.read(settingsProvider.notifier).updateTapDuration(ms);
+        DebugLog.d('悬浮窗更新点击时长: ${ms}ms');
+      },
+      onCountdownChanged: (seconds) {
+        ref.read(settingsProvider.notifier).updateCountdown(seconds);
+        DebugLog.d('悬浮窗更新倒计时: ${seconds}秒');
+      },
+      onDebugModeChanged: (enabled) {
+        ref.read(debugModeProvider.notifier).setEnabled(enabled);
+        DebugLog.d('悬浮窗更新Debug模式: $enabled');
+      },
     );
     _callbacksSet = true;
     _syncDataToFloating();
@@ -132,6 +143,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
         config.baseX, config.baseY, config.columnSpacing, config.rowSpacing,
       );
     }
+    // 同步其他参数到悬浮窗
+    NativeService.updateTapDuration(config.tapDurationMs);
+    NativeService.updateCountdownSeconds(config.countdownSeconds);
+    NativeService.updateDebugMode(ref.read(debugModeProvider));
   }
 
   void _showSnackBar(String message, {bool isError = false}) {
@@ -149,7 +164,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
   @override
   Widget build(BuildContext context) {
     final scoreState = ref.watch(scoreListProvider);
-    final playbackState = ref.watch(playbackProvider);
     final filteredScores = ref.watch(filteredScoresProvider);
 
     ref.listen(scoreListProvider, (prev, next) {
@@ -163,21 +177,18 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
       }
     });
 
+    // 倒计时和进度同步到悬浮窗
     ref.listen(playbackProvider, (prev, next) {
       if (_isFloatingRunning) {
         NativeService.updateProgress(next.currentEventIndex, next.totalEvents);
 
-        // 倒计时同步到悬浮窗覆盖层
         if (next.status == PlaybackStatus.countdown) {
           if (prev?.status != PlaybackStatus.countdown) {
-            // 倒计时开始
             NativeService.showCountdown(next.countdownRemaining);
           } else {
-            // 倒计时更新
             NativeService.updateCountdown(next.countdownRemaining);
           }
         } else if (prev?.status == PlaybackStatus.countdown) {
-          // 倒计时结束
           NativeService.hideCountdown();
         }
       }
@@ -232,12 +243,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
 
                     // 搜索栏
                     SliverToBoxAdapter(child: _buildSearchBar()),
-
-                    // 播放控制
-                    if (scoreState.selectedScore != null)
-                      SliverToBoxAdapter(
-                        child: _buildPlaybackCard(scoreState, playbackState),
-                      ),
 
                     // 乐谱列表标题
                     const SliverToBoxAdapter(
@@ -346,32 +351,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
               onPressed: _showPermissionDialog,
               tooltip: '权限不足',
             ),
-
-          // 设置按钮
-          _buildGlassIconButton(
-            icon: Icons.settings_rounded,
-            onPressed: () => Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const SettingsScreen()),
-            ),
-          ),
         ],
-      ),
-    );
-  }
-
-  Widget _buildGlassIconButton({required IconData icon, required VoidCallback onPressed}) {
-    return Container(
-      width: 40,
-      height: 40,
-      decoration: BoxDecoration(
-        color: AppColors.glassBg,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.glassBorder),
-      ),
-      child: IconButton(
-        icon: Icon(icon, color: AppColors.textSecondary, size: 20),
-        onPressed: onPressed,
       ),
     );
   }
@@ -618,251 +598,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
             ),
           ),
         ),
-      ),
-    );
-  }
-
-  Widget _buildPlaybackCard(dynamic scoreState, PlaybackState playbackState) {
-    final score = scoreState.selectedScore!;
-    return GlassContainer(
-      margin: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        children: [
-          // 曲目信息
-          Row(
-            children: [
-              Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  gradient: AppColors.gradientPrimary,
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: const Icon(Icons.music_note_rounded, color: Colors.white, size: 20),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      score.name,
-                      style: const TextStyle(
-                        color: AppColors.textPrimary,
-                        fontWeight: FontWeight.w600,
-                        fontSize: 16,
-                      ),
-                    ),
-                    if (playbackState.status != PlaybackStatus.idle)
-                      Text(
-                        '${playbackState.currentEventIndex} / ${playbackState.totalEvents}',
-                        style: const TextStyle(
-                          color: AppColors.textTertiary,
-                          fontSize: 12,
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-
-          // 进度条
-          if (playbackState.status != PlaybackStatus.idle) ...[
-            const SizedBox(height: 16),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(4),
-              child: LinearProgressIndicator(
-                value: playbackState.progress,
-                backgroundColor: AppColors.glassBg,
-                valueColor: const AlwaysStoppedAnimation(AppColors.primary),
-                minHeight: 4,
-              ),
-            ),
-          ],
-
-          // 倒计时
-          if (playbackState.status == PlaybackStatus.countdown) ...[
-            const SizedBox(height: 16),
-            Text(
-              '${playbackState.countdownRemaining}',
-              style: const TextStyle(
-                fontSize: 32,
-                fontWeight: FontWeight.bold,
-                color: AppColors.primary,
-              ),
-            ),
-            const Text(
-              '秒后开始',
-              style: TextStyle(color: AppColors.textTertiary, fontSize: 12),
-            ),
-          ],
-
-          const SizedBox(height: 16),
-
-          // 控制按钮
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              // 播放/暂停
-              _buildPlayButton(
-                icon: playbackState.status == PlaybackStatus.playing
-                    ? Icons.pause_rounded
-                    : Icons.play_arrow_rounded,
-                onTap: () {
-                  final notifier = ref.read(playbackProvider.notifier);
-                  if (playbackState.status == PlaybackStatus.playing) {
-                    notifier.pause();
-                  } else {
-                    notifier.setOnNoteEvent(_onNoteEvent);
-                    notifier.play();
-                  }
-                },
-              ),
-
-              if (playbackState.status != PlaybackStatus.idle) ...[
-                const SizedBox(width: 16),
-                _buildPlayButton(
-                  icon: Icons.stop_rounded,
-                  color: AppColors.error,
-                  onTap: () => ref.read(playbackProvider.notifier).stop(),
-                ),
-              ],
-
-              const SizedBox(width: 24),
-
-              // 速度调节
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: BoxDecoration(
-                  color: AppColors.glassBg,
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: AppColors.glassBorder),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(Icons.speed_rounded, color: AppColors.textTertiary, size: 16),
-                    const SizedBox(width: 4),
-                    Text(
-                      '${playbackState.speed.toStringAsFixed(1)}x',
-                      style: const TextStyle(
-                        color: AppColors.textPrimary,
-                        fontWeight: FontWeight.w600,
-                        fontSize: 13,
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    SizedBox(
-                      width: 80,
-                      child: SliderTheme(
-                        data: SliderThemeData(
-                          activeTrackColor: AppColors.primary,
-                          inactiveTrackColor: AppColors.glassBg,
-                          thumbColor: AppColors.primary,
-                          overlayColor: AppColors.primary.withOpacity(0.2),
-                          trackHeight: 2,
-                          thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 5),
-                        ),
-                        child: Slider(
-                          value: playbackState.speed.clamp(0.1, 10.0),
-                          min: 0.1,
-                          max: 10.0,
-                          divisions: 99,
-                          onChanged: (value) => ref.read(playbackProvider.notifier).setSpeed(value),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-
-          // Debug 模式：测试点击按钮
-          if (ref.watch(debugModeProvider)) ...[
-            const SizedBox(height: 12),
-            const Divider(height: 1),
-            const SizedBox(height: 12),
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                icon: const Icon(Icons.adb_rounded, size: 16),
-                label: const Text('调试：依次点击所有琴键'),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: AppColors.warning,
-                  side: BorderSide(color: AppColors.warning.withOpacity(0.5)),
-                ),
-                onPressed: _testTapAllKeys,
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-
-  /// 调试：依次点击所有 15 个琴键，验证校准是否正确
-  /// 无论 DebugLog 开关如何，始终打印到控制台
-  Future<void> _testTapAllKeys() async {
-    final config = ref.read(settingsProvider);
-
-    // 强制打印（不受 DebugLog.enabled 控制）
-    final log = DebugLog.logAlways;
-    log('═══════════════════════════════════════');
-    log('  调试点击测试 - 开始');
-    log('═══════════════════════════════════════');
-    log('配置: baseX=${config.baseX}, baseY=${config.baseY}');
-    log('      colSpacing=${config.columnSpacing}, rowSpacing=${config.rowSpacing}');
-    log('      tapDuration=${config.tapDurationMs}ms');
-    log('───────────────────────────────────────');
-
-    const noteNames = [
-      ['-1', '-2', '-3', '-4', '-5'],
-      ['-6', '-7', '1', '2', '3'],
-      ['4', '5', '6', '7', '+1'],
-    ];
-
-    for (int row = 0; row < 3; row++) {
-      for (int col = 0; col < 5; col++) {
-        final x = config.getX(col);
-        final y = config.getY(row);
-        final name = noteNames[row][col];
-
-        log('$name (row=$row, col=$col) → (${x.toStringAsFixed(1)}, ${y.toStringAsFixed(1)})');
-
-        NativeService.tap(x, y, config.tapDurationMs);
-        if (_isFloatingRunning) {
-          NativeService.showTapEffect(x, y);
-        }
-
-        await Future.delayed(const Duration(milliseconds: 300));
-      }
-    }
-
-    log('───────────────────────────────────────');
-    log('  调试点击测试 - 完成');
-    log('═══════════════════════════════════════');
-  }
-
-  Widget _buildPlayButton({
-    required IconData icon,
-    required VoidCallback onTap,
-    Color? color,
-  }) {
-    final buttonColor = color ?? AppColors.primary;
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 52,
-        height: 52,
-        decoration: BoxDecoration(
-          color: buttonColor.withOpacity(0.15),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: buttonColor.withOpacity(0.3)),
-        ),
-        child: Icon(icon, color: buttonColor, size: 28),
       ),
     );
   }

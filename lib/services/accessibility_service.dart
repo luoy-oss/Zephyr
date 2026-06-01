@@ -110,6 +110,21 @@ class NativeService {
     await _floatingChannel.invokeMethod('hideCountdown');
   }
 
+  /// 更新点击时长
+  static Future<void> updateTapDuration(int ms) async {
+    await _floatingChannel.invokeMethod('updateTapDuration', {'ms': ms});
+  }
+
+  /// 更新倒计时秒数
+  static Future<void> updateCountdownSeconds(int seconds) async {
+    await _floatingChannel.invokeMethod('updateCountdownSeconds', {'seconds': seconds});
+  }
+
+  /// 更新 Debug 模式
+  static Future<void> updateDebugMode(bool enabled) async {
+    await _floatingChannel.invokeMethod('updateDebugMode', {'enabled': enabled});
+  }
+
   /// 设置悬浮窗回调
   static Future<void> setFloatingCallbacks({
     required Function() onPlay,
@@ -118,6 +133,9 @@ class NativeService {
     required Function(String) onSelectScore,
     required Function(double, double, double, double) onCalibrationChanged,
     Function()? onPanelOpened,
+    Function(int)? onTapDurationChanged,
+    Function(int)? onCountdownChanged,
+    Function(bool)? onDebugModeChanged,
   }) async {
     // 先设置原生端回调
     await _floatingChannel.invokeMethod('setCallbacks');
@@ -149,6 +167,18 @@ class NativeService {
           break;
         case 'onPanelOpened':
           onPanelOpened?.call();
+          break;
+        case 'onTapDurationChanged':
+          final ms = call.arguments as int? ?? 100;
+          onTapDurationChanged?.call(ms);
+          break;
+        case 'onCountdownChanged':
+          final seconds = call.arguments as int? ?? 3;
+          onCountdownChanged?.call(seconds);
+          break;
+        case 'onDebugModeChanged':
+          final enabled = call.arguments as bool? ?? false;
+          onDebugModeChanged?.call(enabled);
           break;
       }
     });

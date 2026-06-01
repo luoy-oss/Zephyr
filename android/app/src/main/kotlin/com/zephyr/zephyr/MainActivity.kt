@@ -144,6 +144,21 @@ class MainActivity : FlutterActivity() {
                     FloatingWindowService.instance?.hideCountdown()
                     result.success(true)
                 }
+                "updateTapDuration" -> {
+                    val ms = call.argument<Number>("ms")?.toInt() ?: 100
+                    FloatingWindowService.instance?.updateTapDuration(ms)
+                    result.success(true)
+                }
+                "updateCountdownSeconds" -> {
+                    val seconds = call.argument<Number>("seconds")?.toInt() ?: 3
+                    FloatingWindowService.instance?.updateCountdown(seconds)
+                    result.success(true)
+                }
+                "updateDebugMode" -> {
+                    val enabled = call.argument<Boolean>("enabled") ?: false
+                    FloatingWindowService.instance?.updateDebugMode(enabled)
+                    result.success(true)
+                }
                 else -> result.notImplemented()
             }
         }
@@ -189,6 +204,24 @@ class MainActivity : FlutterActivity() {
             Log.d(TAG, "onPanelOpened callback triggered")
             runOnUiThread {
                 floatingMethodChannel?.invokeMethod("onPanelOpened", null)
+            }
+        }
+        FloatingWindowService.onTapDurationChanged = { ms ->
+            Log.d(TAG, "onTapDurationChanged callback triggered: $ms")
+            runOnUiThread {
+                floatingMethodChannel?.invokeMethod("onTapDurationChanged", ms)
+            }
+        }
+        FloatingWindowService.onCountdownChanged = { seconds ->
+            Log.d(TAG, "onCountdownChanged callback triggered: $seconds")
+            runOnUiThread {
+                floatingMethodChannel?.invokeMethod("onCountdownChanged", seconds)
+            }
+        }
+        FloatingWindowService.onDebugModeChanged = { enabled ->
+            Log.d(TAG, "onDebugModeChanged callback triggered: $enabled")
+            runOnUiThread {
+                floatingMethodChannel?.invokeMethod("onDebugModeChanged", enabled)
             }
         }
     }
