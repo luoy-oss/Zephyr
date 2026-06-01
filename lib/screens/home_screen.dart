@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -11,6 +12,7 @@ import '../providers/playback_provider.dart';
 import '../providers/settings_provider.dart';
 import '../services/accessibility_service.dart';
 import '../widgets/score_card.dart';
+import '../widgets/glass_container.dart';
 import 'settings_screen.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
@@ -62,7 +64,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
         _isChecking = false;
       });
 
-      // 权限不足时自动关闭悬浮窗
       if (floatingRunning && (!accessibility || !overlay)) {
         await NativeService.stopFloatingWindow();
         if (mounted) {
@@ -70,17 +71,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
             _isFloatingRunning = false;
             _callbacksSet = false;
           });
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('权限不足，悬浮窗已自动关闭'),
-              backgroundColor: AppColors.error,
-            ),
-          );
+          _showSnackBar('权限不足，悬浮窗已自动关闭', isError: true);
         }
         return;
       }
 
-      // 悬浮窗运行中且还没设置回调，设置回调
       if (floatingRunning && !_callbacksSet) {
         _setupFloatingCallbacks();
       }
@@ -94,15 +89,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
         notifier.setOnNoteEvent(_onNoteEvent);
         notifier.play();
       },
-      onPause: () {
-        ref.read(playbackProvider.notifier).pause();
-      },
-      onStop: () {
-        ref.read(playbackProvider.notifier).stop();
-      },
-      onSelectScore: (id) {
-        ref.read(scoreListProvider.notifier).selectScore(id);
-      },
+      onPause: () => ref.read(playbackProvider.notifier).pause(),
+      onStop: () => ref.read(playbackProvider.notifier).stop(),
+      onSelectScore: (id) => ref.read(scoreListProvider.notifier).selectScore(id),
       onCalibrationChanged: (baseX, baseY, colSpacing, rowSpacing) {
         ref.read(settingsProvider.notifier).updateConfig(
           ref.read(settingsProvider).copyWith(
@@ -131,13 +120,24 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
     );
   }
 
+  void _showSnackBar(String message, {bool isError = false}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: isError ? AppColors.error : AppColors.success,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final scoreState = ref.watch(scoreListProvider);
     final playbackState = ref.watch(playbackProvider);
     final filteredScores = ref.watch(filteredScoresProvider);
 
-    // 监听状态变化，同步到悬浮窗
     ref.listen(scoreListProvider, (prev, next) {
       if (_isFloatingRunning) {
         NativeService.updateScoreList(
@@ -149,7 +149,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
       }
     });
 
-    // 监听播放进度，同步到悬浮窗
     ref.listen(playbackProvider, (prev, next) {
       if (_isFloatingRunning) {
         NativeService.updateProgress(next.currentEventIndex, next.totalEvents);
@@ -157,32 +156,172 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
     });
 
     if (_isChecking) {
-      return const Scaffold(
-        body: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              CircularProgressIndicator(),
-              SizedBox(height: 16),
-              Text('检查权限中...'),
-            ],
+      return Scaffold(
+        body: Container(
+          decoration: const BoxDecoration(gradient: AppColors.gradientSurface),
+          child: const Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                CircularProgressIndicator(color: AppColors.primary),
+                SizedBox(height: 16),
+                Text('检查权限中...', style: TextStyle(color: AppColors.textSecondary)),
+              ],
+            ),
           ),
         ),
       );
     }
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text(AppStrings.appTitle),
-        actions: [
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            colors: [AppColors.background, Color(0xFF1A1A2E)],
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+          ),
+        ),
+        child: SafeArea(
+          child: Column(
+            children: [
+              // 顶部栏
+              _buildAppBar(),
+
+              Expanded(
+                child: CustomScrollView(
+                  slivers: [
+                    // 悬浮窗开关
+                    SliverToBoxAdapter(child: _buildFloatingToggleCard()),
+
+                    // 权限提示
+                    if (!_hasAccessibility || !_hasOverlay)
+                      SliverToBoxAdapter(child: _buildPermissionBanner()),
+
+                    // 使用提示
+                    if (_isFloatingRunning)
+                      SliverToBoxAdapter(child: _buildInfoCard()),
+
+                    // 搜索栏
+                    SliverToBoxAdapter(child: _buildSearchBar()),
+
+                    // 播放控制
+                    if (scoreState.selectedScore != null)
+                      SliverToBoxAdapter(
+                        child: _buildPlaybackCard(scoreState, playbackState),
+                      ),
+
+                    // 乐谱列表标题
+                    const SliverToBoxAdapter(
+                      child: Padding(
+                        padding: EdgeInsets.fromLTRB(20, 16, 20, 8),
+                        child: Text(
+                          '琴谱列表',
+                          style: TextStyle(
+                            color: AppColors.textPrimary,
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ),
+
+                    // 乐谱列表
+                    if (scoreState.isLoading)
+                      const SliverFillRemaining(
+                        child: Center(child: CircularProgressIndicator()),
+                      )
+                    else if (filteredScores.isEmpty)
+                      SliverFillRemaining(child: _buildEmptyState())
+                    else
+                      SliverList(
+                        delegate: SliverChildBuilderDelegate(
+                          (context, index) {
+                            final score = filteredScores[index];
+                            final isSelected = score.id == scoreState.selectedId;
+                            return Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                              child: ScoreCard(
+                                score: score,
+                                isSelected: isSelected,
+                                onTap: () {
+                                  ref.read(scoreListProvider.notifier).selectScore(score.id);
+                                  if (_isFloatingRunning) {
+                                    NativeService.updateSelectedScore(score.name);
+                                  }
+                                },
+                                onDelete: () => _confirmDelete(score.id, score.name),
+                              ),
+                            );
+                          },
+                          childCount: filteredScores.length,
+                        ),
+                      ),
+
+                    // 底部间距
+                    const SliverToBoxAdapter(child: SizedBox(height: 80)),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+      floatingActionButton: _buildFab(),
+    );
+  }
+
+  Widget _buildAppBar() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 8),
+      child: Row(
+        children: [
+          // Logo 和标题
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              gradient: AppColors.gradientPrimary,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: const Icon(Icons.music_note, color: Colors.white, size: 22),
+          ),
+          const SizedBox(width: 12),
+          const Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Zephyr',
+                style: TextStyle(
+                  color: AppColors.textPrimary,
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 1,
+                ),
+              ),
+              Text(
+                'Auto Piano Player',
+                style: TextStyle(
+                  color: AppColors.textTertiary,
+                  fontSize: 11,
+                  letterSpacing: 0.5,
+                ),
+              ),
+            ],
+          ),
+          const Spacer(),
+
+          // 权限警告
           if (!_hasAccessibility || !_hasOverlay)
             IconButton(
-              icon: const Icon(Icons.warning, color: AppColors.error),
+              icon: const Icon(Icons.warning_rounded, color: AppColors.warning),
               onPressed: _showPermissionDialog,
               tooltip: '权限不足',
             ),
-          IconButton(
-            icon: const Icon(Icons.settings),
+
+          // 设置按钮
+          _buildGlassIconButton(
+            icon: Icons.settings_rounded,
             onPressed: () => Navigator.push(
               context,
               MaterialPageRoute(builder: (_) => const SettingsScreen()),
@@ -190,150 +329,96 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
           ),
         ],
       ),
-      body: Column(
-        children: [
-          // 悬浮窗开关
-          _buildFloatingToggleCard(),
+    );
+  }
 
-          // 权限提示
-          if (!_hasAccessibility || !_hasOverlay) _buildPermissionBanner(),
-
-          // 使用提示
-          if (_isFloatingRunning)
-            Container(
-              margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: AppColors.primary.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: const Row(
-                children: [
-                  Icon(Icons.info_outline, color: AppColors.primary, size: 20),
-                  SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      '悬浮窗已开启，点击悬浮球打开控制面板',
-                      style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-          // 搜索栏
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            child: TextField(
-              decoration: InputDecoration(
-                hintText: AppStrings.searchScore,
-                prefixIcon: const Icon(Icons.search),
-                filled: true,
-                fillColor: AppColors.surface,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide.none,
-                ),
-              ),
-              onChanged: (value) {
-                ref.read(searchQueryProvider.notifier).state = value;
-              },
-            ),
-          ),
-
-          // 当前选中的乐谱和播放控制
-          if (scoreState.selectedScore != null)
-            _buildSelectedScoreBar(scoreState, playbackState),
-
-          // 乐谱列表
-          Expanded(
-            child: scoreState.isLoading
-                ? const Center(child: CircularProgressIndicator())
-                : filteredScores.isEmpty
-                    ? _buildEmptyState()
-                    : ListView.builder(
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
-                        itemCount: filteredScores.length,
-                        itemBuilder: (context, index) {
-                          final score = filteredScores[index];
-                          final isSelected = score.id == scoreState.selectedId;
-                          return ScoreCard(
-                            score: score,
-                            isSelected: isSelected,
-                            onTap: () {
-                              ref.read(scoreListProvider.notifier).selectScore(score.id);
-                              if (_isFloatingRunning) {
-                                NativeService.updateSelectedScore(score.name);
-                              }
-                            },
-                            onDelete: () => _confirmDelete(score.id, score.name),
-                          );
-                        },
-                      ),
-          ),
-        ],
+  Widget _buildGlassIconButton({required IconData icon, required VoidCallback onPressed}) {
+    return Container(
+      width: 40,
+      height: 40,
+      decoration: BoxDecoration(
+        color: AppColors.glassBg,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.glassBorder),
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _importScore,
-        backgroundColor: AppColors.primary,
-        child: const Icon(Icons.add),
+      child: IconButton(
+        icon: Icon(icon, color: AppColors.textSecondary, size: 20),
+        onPressed: onPressed,
       ),
     );
   }
 
   Widget _buildFloatingToggleCard() {
     final canToggle = _hasAccessibility && _hasOverlay;
-    return Container(
+    return GlassContainer(
       margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      decoration: BoxDecoration(
-        color: _isFloatingRunning ? AppColors.primary.withOpacity(0.2) : AppColors.surface,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: _isFloatingRunning ? AppColors.primary : Colors.transparent,
-        ),
-      ),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       child: Row(
         children: [
-          Icon(
-            _isFloatingRunning ? Icons.circle : Icons.circle_outlined,
-            color: _isFloatingRunning ? Colors.green : AppColors.textSecondary,
-            size: 12,
+          // 状态指示灯
+          Container(
+            width: 10,
+            height: 10,
+            decoration: BoxDecoration(
+              color: _isFloatingRunning ? AppColors.success : AppColors.textTertiary,
+              shape: BoxShape.circle,
+              boxShadow: _isFloatingRunning
+                  ? [BoxShadow(color: AppColors.success.withOpacity(0.5), blurRadius: 8)]
+                  : null,
+            ),
           ),
-          const SizedBox(width: 8),
+          const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('悬浮窗控制', style: TextStyle(fontWeight: FontWeight.bold)),
+                const Text(
+                  '悬浮窗控制',
+                  style: TextStyle(
+                    color: AppColors.textPrimary,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 15,
+                  ),
+                ),
+                const SizedBox(height: 2),
                 Text(
                   canToggle
-                      ? (_isFloatingRunning ? '运行中' : '已关闭')
+                      ? (_isFloatingRunning ? '运行中 · 点击悬浮球打开面板' : '已关闭')
                       : '需要先授予权限',
-                  style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                  style: const TextStyle(
+                    color: AppColors.textTertiary,
+                    fontSize: 12,
+                  ),
                 ),
               ],
             ),
           ),
-          Switch(
-            value: _isFloatingRunning,
-            activeColor: AppColors.primary,
-            onChanged: canToggle
-                ? (value) async {
-                    if (value) {
-                      await NativeService.startFloatingWindow();
-                      await Future.delayed(const Duration(milliseconds: 500));
-                      await _checkAllPermissions();
-                      if (_isFloatingRunning) _setupFloatingCallbacks();
-                    } else {
-                      await NativeService.stopFloatingWindow();
-                      setState(() {
-                        _isFloatingRunning = false;
-                        _callbacksSet = false;
-                      });
+          // 开关
+          Transform.scale(
+            scale: 0.85,
+            child: Switch(
+              value: _isFloatingRunning,
+              activeColor: AppColors.success,
+              activeTrackColor: AppColors.success.withOpacity(0.3),
+              inactiveThumbColor: AppColors.textTertiary,
+              inactiveTrackColor: AppColors.glassBg,
+              onChanged: canToggle
+                  ? (value) async {
+                      if (value) {
+                        await NativeService.startFloatingWindow();
+                        await Future.delayed(const Duration(milliseconds: 500));
+                        await _checkAllPermissions();
+                        if (_isFloatingRunning) _setupFloatingCallbacks();
+                      } else {
+                        await NativeService.stopFloatingWindow();
+                        setState(() {
+                          _isFloatingRunning = false;
+                          _callbacksSet = false;
+                        });
+                      }
                     }
-                  }
-                : null,
+                  : null,
+            ),
           ),
         ],
       ),
@@ -341,37 +426,41 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
   }
 
   Widget _buildPermissionBanner() {
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: AppColors.error.withOpacity(0.15),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.error.withOpacity(0.5)),
-      ),
+    return GlassContainer(
+      margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+      padding: const EdgeInsets.all(16),
+      color: AppColors.warning.withOpacity(0.1),
+      border: Border.all(color: AppColors.warning.withOpacity(0.3)),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Row(
             children: [
-              Icon(Icons.warning_amber, color: AppColors.error, size: 20),
+              Icon(Icons.warning_amber_rounded, color: AppColors.warning, size: 20),
               SizedBox(width: 8),
-              Text('需要授予权限', style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.error)),
+              Text(
+                '需要授予权限',
+                style: TextStyle(
+                  color: AppColors.warning,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 15,
+                ),
+              ),
             ],
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 12),
           if (!_hasAccessibility)
             _buildPermissionItem(
-              icon: Icons.accessibility_new,
+              icon: Icons.accessibility_new_rounded,
               title: '无障碍权限',
               subtitle: '用于模拟屏幕点击',
               onTap: () => NativeService.openAccessibilitySettings(),
             ),
           if (!_hasOverlay)
             _buildPermissionItem(
-              icon: Icons.layers,
+              icon: Icons.layers_rounded,
               title: '悬浮窗权限',
-              subtitle: '用于在游戏上层显示控制面板',
+              subtitle: '用于在游戏上层显示',
               onTap: () => NativeService.requestOverlayPermission(),
             ),
         ],
@@ -389,23 +478,48 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
       padding: const EdgeInsets.only(top: 8),
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(8),
-        child: Padding(
-          padding: const EdgeInsets.all(8),
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: AppColors.glassBg,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: AppColors.glassBorder),
+          ),
           child: Row(
             children: [
-              Icon(icon, color: AppColors.error, size: 20),
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: AppColors.warning.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(icon, color: AppColors.warning, size: 18),
+              ),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(title, style: const TextStyle(fontWeight: FontWeight.w500)),
-                    Text(subtitle, style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        color: AppColors.textPrimary,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    Text(
+                      subtitle,
+                      style: const TextStyle(
+                        color: AppColors.textTertiary,
+                        fontSize: 12,
+                      ),
+                    ),
                   ],
                 ),
               ),
-              const Icon(Icons.arrow_forward_ios, size: 16, color: AppColors.error),
+              const Icon(Icons.arrow_forward_ios_rounded, size: 14, color: AppColors.textTertiary),
             ],
           ),
         ),
@@ -413,126 +527,226 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
     );
   }
 
-  Widget _buildSelectedScoreBar(dynamic scoreState, PlaybackState playbackState) {
-    final score = scoreState.selectedScore!;
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+  Widget _buildInfoCard() {
+    return GlassContainer(
+      margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
       padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(12),
+      child: Row(
+        children: [
+          Container(
+            width: 32,
+            height: 32,
+            decoration: BoxDecoration(
+              color: AppColors.primary.withOpacity(0.2),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: const Icon(Icons.info_outline_rounded, color: AppColors.primary, size: 18),
+          ),
+          const SizedBox(width: 12),
+          const Expanded(
+            child: Text(
+              '悬浮窗已开启，点击悬浮球打开控制面板',
+              style: TextStyle(
+                color: AppColors.textSecondary,
+                fontSize: 13,
+              ),
+            ),
+          ),
+        ],
       ),
+    );
+  }
+
+  Widget _buildSearchBar() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+      child: Container(
+        decoration: BoxDecoration(
+          color: AppColors.glassBg,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: AppColors.glassBorder),
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(14),
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+            child: TextField(
+              style: const TextStyle(color: AppColors.textPrimary),
+              decoration: InputDecoration(
+                hintText: '搜索琴谱...',
+                hintStyle: const TextStyle(color: AppColors.textTertiary),
+                prefixIcon: const Icon(Icons.search_rounded, color: AppColors.textTertiary, size: 20),
+                filled: true,
+                fillColor: Colors.transparent,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(14),
+                  borderSide: BorderSide.none,
+                ),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              ),
+              onChanged: (value) {
+                ref.read(searchQueryProvider.notifier).state = value;
+              },
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPlaybackCard(dynamic scoreState, PlaybackState playbackState) {
+    final score = scoreState.selectedScore!;
+    return GlassContainer(
+      margin: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+      padding: const EdgeInsets.all(16),
       child: Column(
         children: [
           // 曲目信息
           Row(
             children: [
-              const Icon(Icons.music_note, color: AppColors.primary, size: 20),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(score.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-              ),
-              if (playbackState.status != PlaybackStatus.idle)
-                Text(
-                  '${playbackState.currentEventIndex}/${playbackState.totalEvents}',
-                  style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  gradient: AppColors.gradientPrimary,
+                  borderRadius: BorderRadius.circular(10),
                 ),
+                child: const Icon(Icons.music_note_rounded, color: Colors.white, size: 20),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      score.name,
+                      style: const TextStyle(
+                        color: AppColors.textPrimary,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 16,
+                      ),
+                    ),
+                    if (playbackState.status != PlaybackStatus.idle)
+                      Text(
+                        '${playbackState.currentEventIndex} / ${playbackState.totalEvents}',
+                        style: const TextStyle(
+                          color: AppColors.textTertiary,
+                          fontSize: 12,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
             ],
           ),
 
           // 进度条
           if (playbackState.status != PlaybackStatus.idle) ...[
-            const SizedBox(height: 8),
+            const SizedBox(height: 16),
             ClipRRect(
               borderRadius: BorderRadius.circular(4),
               child: LinearProgressIndicator(
                 value: playbackState.progress,
-                backgroundColor: AppColors.card,
+                backgroundColor: AppColors.glassBg,
                 valueColor: const AlwaysStoppedAnimation(AppColors.primary),
-                minHeight: 6,
+                minHeight: 4,
               ),
             ),
           ],
 
           // 倒计时
           if (playbackState.status == PlaybackStatus.countdown) ...[
-            const SizedBox(height: 12),
+            const SizedBox(height: 16),
             Text(
-              '${playbackState.countdownRemaining} 秒后开始',
-              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppColors.primary),
+              '${playbackState.countdownRemaining}',
+              style: const TextStyle(
+                fontSize: 32,
+                fontWeight: FontWeight.bold,
+                color: AppColors.primary,
+              ),
+            ),
+            const Text(
+              '秒后开始',
+              style: TextStyle(color: AppColors.textTertiary, fontSize: 12),
             ),
           ],
 
-          const SizedBox(height: 12),
+          const SizedBox(height: 16),
 
           // 控制按钮
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               // 播放/暂停
-              _buildControlButton(
+              _buildPlayButton(
                 icon: playbackState.status == PlaybackStatus.playing
                     ? Icons.pause_rounded
                     : Icons.play_arrow_rounded,
-                color: AppColors.primary,
-                size: 48,
-                onPressed: () {
+                onTap: () {
                   final notifier = ref.read(playbackProvider.notifier);
                   if (playbackState.status == PlaybackStatus.playing) {
                     notifier.pause();
                   } else {
-                    // 设置回调后播放
                     notifier.setOnNoteEvent(_onNoteEvent);
                     notifier.play();
                   }
                 },
               ),
 
-              // 停止
               if (playbackState.status != PlaybackStatus.idle) ...[
                 const SizedBox(width: 16),
-                _buildControlButton(
+                _buildPlayButton(
                   icon: Icons.stop_rounded,
                   color: AppColors.error,
-                  size: 48,
-                  onPressed: () => ref.read(playbackProvider.notifier).stop(),
+                  onTap: () => ref.read(playbackProvider.notifier).stop(),
                 ),
               ],
 
               const SizedBox(width: 24),
 
-              // 速度显示
-              Column(
-                children: [
-                  const Text('速度', style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
-                  Text(
-                    '${playbackState.speed.toStringAsFixed(1)}x',
-                    style: const TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                ],
-              ),
-
-              const SizedBox(width: 8),
-
               // 速度调节
-              SizedBox(
-                width: 100,
-                child: SliderTheme(
-                  data: SliderThemeData(
-                    activeTrackColor: AppColors.primary,
-                    inactiveTrackColor: AppColors.card,
-                    thumbColor: AppColors.primary,
-                    overlayColor: AppColors.primary.withOpacity(0.2),
-                    trackHeight: 3,
-                    thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
-                  ),
-                  child: Slider(
-                    value: playbackState.speed,
-                    min: 0.25,
-                    max: 3.0,
-                    divisions: 11,
-                    onChanged: (value) => ref.read(playbackProvider.notifier).setSpeed(value),
-                  ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: AppColors.glassBg,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: AppColors.glassBorder),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.speed_rounded, color: AppColors.textTertiary, size: 16),
+                    const SizedBox(width: 4),
+                    Text(
+                      '${playbackState.speed.toStringAsFixed(1)}x',
+                      style: const TextStyle(
+                        color: AppColors.textPrimary,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 13,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    SizedBox(
+                      width: 80,
+                      child: SliderTheme(
+                        data: SliderThemeData(
+                          activeTrackColor: AppColors.primary,
+                          inactiveTrackColor: AppColors.glassBg,
+                          thumbColor: AppColors.primary,
+                          overlayColor: AppColors.primary.withOpacity(0.2),
+                          trackHeight: 2,
+                          thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 5),
+                        ),
+                        child: Slider(
+                          value: playbackState.speed,
+                          min: 0.25,
+                          max: 3.0,
+                          divisions: 11,
+                          onChanged: (value) => ref.read(playbackProvider.notifier).setSpeed(value),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],
@@ -542,27 +756,23 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
     );
   }
 
-  Widget _buildControlButton({
+  Widget _buildPlayButton({
     required IconData icon,
-    required Color color,
-    required double size,
-    required VoidCallback onPressed,
+    required VoidCallback onTap,
+    Color? color,
   }) {
-    return Material(
-      color: color.withOpacity(0.15),
-      borderRadius: BorderRadius.circular(size / 2),
-      child: InkWell(
-        onTap: onPressed,
-        borderRadius: BorderRadius.circular(size / 2),
-        child: Container(
-          width: size,
-          height: size,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(size / 2),
-            border: Border.all(color: color.withOpacity(0.3)),
-          ),
-          child: Icon(icon, color: color, size: size * 0.6),
+    final buttonColor = color ?? AppColors.primary;
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 52,
+        height: 52,
+        decoration: BoxDecoration(
+          color: buttonColor.withOpacity(0.15),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: buttonColor.withOpacity(0.3)),
         ),
+        child: Icon(icon, color: buttonColor, size: 28),
       ),
     );
   }
@@ -572,10 +782,35 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.music_note, size: 64, color: AppColors.textSecondary),
+          Icon(Icons.music_note_rounded, size: 64, color: AppColors.textTertiary),
           SizedBox(height: 16),
-          Text(AppStrings.noScores, style: TextStyle(color: AppColors.textSecondary, fontSize: 16)),
+          Text(
+            AppStrings.noScores,
+            style: TextStyle(color: AppColors.textTertiary, fontSize: 16),
+          ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildFab() {
+    return Container(
+      decoration: BoxDecoration(
+        gradient: AppColors.gradientPrimary,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.primary.withOpacity(0.4),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: FloatingActionButton(
+        onPressed: _importScore,
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        child: const Icon(Icons.add_rounded, color: Colors.white, size: 28),
       ),
     );
   }
@@ -595,18 +830,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
         }
         final name = file.name.replaceAll('.txt', '');
         await ref.read(scoreListProvider.notifier).importScore(name, content);
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('已导入: $name'), backgroundColor: Colors.green),
-          );
-        }
+        _showSnackBar('已导入: $name');
       }
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('导入失败: $e'), backgroundColor: AppColors.error),
-        );
-      }
+      _showSnackBar('导入失败: $e', isError: true);
     }
   }
 
@@ -614,10 +841,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text(AppStrings.deleteScore),
-        content: Text('确定要删除「$name」吗？'),
+        backgroundColor: AppColors.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text(AppStrings.deleteScore, style: TextStyle(color: AppColors.textPrimary)),
+        content: Text('确定要删除「$name」吗？', style: const TextStyle(color: AppColors.textSecondary)),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('取消')),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('取消', style: TextStyle(color: AppColors.textTertiary)),
+          ),
           TextButton(
             onPressed: () {
               ref.read(scoreListProvider.notifier).deleteScore(id);
@@ -634,18 +866,20 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('需要权限'),
+        backgroundColor: AppColors.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('需要权限', style: TextStyle(color: AppColors.textPrimary)),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text('Zephyr 需要以下权限才能正常工作：'),
+            const Text('Zephyr 需要以下权限才能正常工作：', style: TextStyle(color: AppColors.textSecondary)),
             const SizedBox(height: 16),
             if (!_hasAccessibility)
               ListTile(
-                leading: const Icon(Icons.accessibility_new, color: AppColors.primary),
-                title: const Text('无障碍权限'),
-                subtitle: const Text('模拟屏幕点击'),
-                trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+                leading: const Icon(Icons.accessibility_new_rounded, color: AppColors.primary),
+                title: const Text('无障碍权限', style: TextStyle(color: AppColors.textPrimary)),
+                subtitle: const Text('模拟屏幕点击', style: TextStyle(color: AppColors.textTertiary)),
+                trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 16, color: AppColors.textTertiary),
                 onTap: () {
                   NativeService.openAccessibilitySettings();
                   Navigator.pop(context);
@@ -653,28 +887,27 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
               ),
             if (!_hasOverlay)
               ListTile(
-                leading: const Icon(Icons.layers, color: AppColors.primary),
-                title: const Text('悬浮窗权限'),
-                subtitle: const Text('在游戏上层显示'),
-                trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+                leading: const Icon(Icons.layers_rounded, color: AppColors.primary),
+                title: const Text('悬浮窗权限', style: TextStyle(color: AppColors.textPrimary)),
+                subtitle: const Text('在游戏上层显示', style: TextStyle(color: AppColors.textTertiary)),
+                trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 16, color: AppColors.textTertiary),
                 onTap: () {
                   NativeService.requestOverlayPermission();
                   Navigator.pop(context);
                 },
               ),
-            const SizedBox(height: 8),
-            const Text('授予权限后返回应用，状态会自动更新',
-              style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('关闭')),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('关闭', style: TextStyle(color: AppColors.textTertiary)),
+          ),
         ],
       ),
     );
   }
 
-  /// 音符事件回调 - 执行实际的屏幕点击
   void _onNoteEvent(dynamic event) {
     final config = ref.read(settingsProvider);
     final notes = event.notes as List;
@@ -686,18 +919,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
       final x = config.getX(note.col);
       final y = config.getY(note.row);
       NativeService.tap(x, y, config.tapDurationMs);
-      // 显示点击动效
       if (_isFloatingRunning) {
         NativeService.showTapEffect(x, y);
       }
     } else {
-      // 和弦 - 多点点击
       final points = notes.map<List<double>>((note) => [
         config.getX(note.col),
         config.getY(note.row),
       ]).toList();
       NativeService.tapMultiple(points, config.tapDurationMs);
-      // 显示多个点击动效
       if (_isFloatingRunning) {
         for (final point in points) {
           NativeService.showTapEffect(point[0], point[1]);

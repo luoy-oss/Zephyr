@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'core/constants/app_colors.dart';
@@ -36,25 +37,68 @@ class _ZephyrAppState extends State<ZephyrApp> {
 
   @override
   Widget build(BuildContext context) {
+    // 设置状态栏样式
+    SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
+      statusBarColor: Colors.transparent,
+      statusBarIconBrightness: Brightness.light,
+      systemNavigationBarColor: AppColors.background,
+    ));
+
     return MaterialApp(
       title: AppStrings.appTitle,
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         brightness: Brightness.dark,
-        colorScheme: ColorScheme.dark(
+        colorScheme: const ColorScheme.dark(
           primary: AppColors.primary,
           secondary: AppColors.secondary,
           surface: AppColors.surface,
           error: AppColors.error,
+          onPrimary: Colors.white,
+          onSecondary: Colors.white,
+          onSurface: AppColors.textPrimary,
         ),
         scaffoldBackgroundColor: AppColors.background,
-        cardTheme: const CardTheme(
+        cardTheme: CardTheme(
           color: AppColors.card,
-          elevation: 4,
+          elevation: 0,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         ),
         appBarTheme: const AppBarTheme(
-          backgroundColor: AppColors.surface,
+          backgroundColor: Colors.transparent,
           elevation: 0,
+          centerTitle: false,
+          titleTextStyle: TextStyle(
+            color: AppColors.textPrimary,
+            fontSize: 20,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        dialogTheme: DialogTheme(
+          backgroundColor: AppColors.surface,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        ),
+        snackBarTheme: SnackBarThemeData(
+          backgroundColor: AppColors.card,
+          contentTextStyle: const TextStyle(color: AppColors.textPrimary),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          behavior: SnackBarBehavior.floating,
+        ),
+        switchTheme: SwitchThemeData(
+          thumbColor: WidgetStateProperty.resolveWith((states) {
+            if (states.contains(WidgetState.selected)) return AppColors.success;
+            return AppColors.textTertiary;
+          }),
+          trackColor: WidgetStateProperty.resolveWith((states) {
+            if (states.contains(WidgetState.selected)) return AppColors.success.withOpacity(0.3);
+            return AppColors.glassBg;
+          }),
+        ),
+        sliderTheme: const SliderThemeData(
+          activeTrackColor: AppColors.primary,
+          inactiveTrackColor: AppColors.glassBg,
+          thumbColor: AppColors.primary,
+          overlayColor: AppColors.glassHighlight,
         ),
         useMaterial3: true,
       ),
@@ -63,28 +107,25 @@ class _ZephyrAppState extends State<ZephyrApp> {
   }
 
   Widget _buildHome() {
-    // 正在检查协议状态
     if (_isChecking) {
       return const Scaffold(
         body: Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              CircularProgressIndicator(),
+              CircularProgressIndicator(color: AppColors.primary),
               SizedBox(height: 16),
-              Text('正在加载...'),
+              Text('正在加载...', style: TextStyle(color: AppColors.textSecondary)),
             ],
           ),
         ),
       );
     }
 
-    // 未同意协议，显示协议页面
     if (_agreementAccepted != true) {
       return const AgreementScreen();
     }
 
-    // 已同意协议，显示主页
     return const HomeScreen();
   }
 }
