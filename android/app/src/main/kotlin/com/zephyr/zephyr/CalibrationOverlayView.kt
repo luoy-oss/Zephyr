@@ -128,10 +128,6 @@ class CalibrationOverlayView(
         textSize = 26f
         textAlign = Paint.Align.CENTER
     }
-    private val dimPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.argb(120, 0, 0, 0)
-    }
-
     // 滑条画笔
     private val sliderTrackPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.parseColor("#555555")
@@ -220,9 +216,8 @@ class CalibrationOverlayView(
 
     // ===== 第一步：点击放置准心，拖动微调 =====
     private fun drawStep1(canvas: Canvas, w: Float, h: Float) {
-        canvas.drawRect(0f, 0f, w, h, dimPaint)
-
-        // 顶部提示
+        // 顶部提示（半透明背景条）
+        canvas.drawRect(0f, 0f, w, 150f, Paint().apply { color = Color.argb(180, 0, 0, 0) })
         titlePaint.color = Color.WHITE
         if (!crosshairPlaced) {
             canvas.drawText("第一步：定位「-1」琴键", w / 2f, 60f, titlePaint)
@@ -295,10 +290,8 @@ class CalibrationOverlayView(
 
     // ===== 第二步：滑条调整间距 =====
     private fun drawStep2(canvas: Canvas, w: Float, h: Float) {
-        val dimPaint2 = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.argb(80, 0, 0, 0)
-        }
-        canvas.drawRect(0f, 0f, w, h, dimPaint2)
+        // 顶部提示背景条
+        canvas.drawRect(0f, 0f, w, 150f, Paint().apply { color = Color.argb(180, 0, 0, 0) })
 
         // 绘制 3x5 网格
         for (row in 0..2) {

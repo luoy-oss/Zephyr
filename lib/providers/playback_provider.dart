@@ -175,7 +175,6 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
     if (nextIdx >= score.events.length) {
       // 最后一个事件，播放完成
       state = state.copyWith(currentEventIndex: nextIdx);
-      // 延迟一小段时间后停止
       _timer = Timer(const Duration(milliseconds: 500), () => stop());
       return;
     }
@@ -183,14 +182,10 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
     final nextEvent = score.events[nextIdx];
     final timeDiff = nextEvent.time - event.time;
 
-    // 延迟计算：timeDiff * msPerTick / speed
-    // msPerTick = 60000 / (bpm * 480)，其中 480 是标准 MIDI 每拍 tick 数
-    final bpm = score.bpm > 0 ? score.bpm : 500;
-    final msPerTick = 60000.0 / (bpm * 480);
-    final delayMs = (timeDiff * msPerTick / state.speed).round().clamp(10, 10000);
+    // time 值即为毫秒，直接用作延迟，除以速度倍率
+    final delayMs = (timeDiff / state.speed).round().clamp(10, 10000);
 
-    DebugLog.d('播放 #${idx}: delay=${delayMs}ms '
-        '(timeDiff=$timeDiff, bpm=$bpm, speed=${state.speed})');
+    DebugLog.d('播放 #${idx}: delay=${delayMs}ms (timeDiff=$timeDiff, speed=${state.speed})');
 
     state = state.copyWith(currentEventIndex: nextIdx);
 
