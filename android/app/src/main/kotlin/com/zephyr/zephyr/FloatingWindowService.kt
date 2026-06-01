@@ -63,7 +63,6 @@ class FloatingWindowService : Service() {
     // UI 引用
     private var progressText: TextView? = null
     private var progressBar: ProgressBar? = null
-    private var playBtnView: View? = null
 
     // 校准参数
     private var baseX = 200f
@@ -192,35 +191,48 @@ class FloatingWindowService : Service() {
         hideFloatingBall()
 
         val panelW = dpToPx(280)
-        val panel = LinearLayout(this).apply {
+        val maxPanelH = (resources.displayMetrics.heightPixels * 0.8).toInt()
+
+        // 外层容器
+        val container = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(Color.parseColor("#F01E1E1E"))
-            setPadding(dpToPx(20), dpToPx(16), dpToPx(20), dpToPx(16))
         }
 
-        // 标题栏
+        // 标题栏（固定）
         val titleBar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
+            setPadding(dpToPx(20), dpToPx(12), dpToPx(20), dpToPx(12))
         }
-        val title = TextView(this).apply {
+        titleBar.addView(TextView(this).apply {
             text = "Zephyr 控制面板"
             setTextColor(Color.WHITE)
             textSize = 16f
             setTypeface(null, Typeface.BOLD)
-        }
-        titleBar.addView(title, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
-        val closeBtn = TextView(this).apply {
+        }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+        titleBar.addView(TextView(this).apply {
             text = "✕"
             setTextColor(Color.WHITE)
             textSize = 18f
             setPadding(dpToPx(8), dpToPx(4), dpToPx(8), dpToPx(4))
             setOnClickListener { hideMainPanel(); showFloatingBall() }
-        }
-        titleBar.addView(closeBtn)
-        panel.addView(titleBar)
+        })
+        container.addView(titleBar)
 
-        panel.addView(createDivider())
+        // 分隔线
+        container.addView(createDivider())
+
+        // 可滚动内容区域
+        val scrollView = ScrollView(this).apply {
+            isVerticalScrollBarEnabled = true
+            scrollBarFadeDuration = 0
+        }
+
+        val contentLayout = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dpToPx(20), dpToPx(8), dpToPx(20), dpToPx(8))
+        }
 
         // 当前曲目
         val scoreRow = LinearLayout(this).apply {
@@ -243,16 +255,14 @@ class FloatingWindowService : Service() {
             textSize = 13f
             setOnClickListener { showScoreSelector() }
         })
-        panel.addView(scoreRow)
-
-        panel.addView(createDivider())
+        contentLayout.addView(scoreRow)
+        contentLayout.addView(createDivider())
 
         // 播放进度
         val progressContainer = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(0, dpToPx(8), 0, dpToPx(8))
         }
-
         progressText = TextView(this).apply {
             text = "0 / 0"
             setTextColor(Color.parseColor("#BBBBBB"))
@@ -260,7 +270,6 @@ class FloatingWindowService : Service() {
             gravity = Gravity.CENTER
         }
         progressContainer.addView(progressText)
-
         progressBar = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
             max = 100
             progress = 0
@@ -269,10 +278,8 @@ class FloatingWindowService : Service() {
         progressContainer.addView(progressBar, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT, dpToPx(6)
         ).apply { topMargin = dpToPx(4) })
-
-        panel.addView(progressContainer)
-
-        panel.addView(createDivider())
+        contentLayout.addView(progressContainer)
+        contentLayout.addView(createDivider())
 
         // 播放控制按钮
         val controlRow = LinearLayout(this).apply {
@@ -280,29 +287,23 @@ class FloatingWindowService : Service() {
             gravity = Gravity.CENTER
             setPadding(0, dpToPx(12), 0, dpToPx(12))
         }
-
-        playBtnView = createCircleButton("▶", "#4CAF50") {
+        controlRow.addView(createCircleButton("▶", "#4CAF50") {
             Log.d(TAG, "Play button clicked")
             onPlay?.invoke()
             updatePlayState(true)
-        }
-        controlRow.addView(playBtnView, LinearLayout.LayoutParams(dpToPx(52), dpToPx(52)).apply { marginEnd = dpToPx(12) })
-
+        }, LinearLayout.LayoutParams(dpToPx(52), dpToPx(52)).apply { marginEnd = dpToPx(12) })
         controlRow.addView(createCircleButton("⏸", "#FF9800") {
             Log.d(TAG, "Pause button clicked")
             onPause?.invoke()
             updatePlayState(false)
         }, LinearLayout.LayoutParams(dpToPx(52), dpToPx(52)).apply { marginEnd = dpToPx(12) })
-
         controlRow.addView(createCircleButton("⏹", "#F44336") {
             Log.d(TAG, "Stop button clicked")
             onStop?.invoke()
             updatePlayState(false)
         }, LinearLayout.LayoutParams(dpToPx(52), dpToPx(52)))
-
-        panel.addView(controlRow)
-
-        panel.addView(createDivider())
+        contentLayout.addView(controlRow)
+        contentLayout.addView(createDivider())
 
         // 速度控制
         val speedLabel = TextView(this).apply {
@@ -310,7 +311,7 @@ class FloatingWindowService : Service() {
             setTextColor(Color.WHITE)
             textSize = 13f
         }
-        panel.addView(speedLabel)
+        contentLayout.addView(speedLabel)
 
         val speedBar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -321,8 +322,7 @@ class FloatingWindowService : Service() {
             currentSpeed = (currentSpeed - 0.25f).coerceAtLeast(0.25f)
             speedLabel.text = "速度: ${String.format("%.2f", currentSpeed)}x"
         })
-
-        val speedSlider = SeekBar(this).apply {
+        speedBar.addView(SeekBar(this).apply {
             max = 11
             progress = ((currentSpeed - 0.25f) / 0.25f).toInt()
             setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
@@ -333,17 +333,15 @@ class FloatingWindowService : Service() {
                 override fun onStartTrackingTouch(sb: SeekBar?) {}
                 override fun onStopTrackingTouch(sb: SeekBar?) {}
             })
-        }
-        speedBar.addView(speedSlider, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+        }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
             marginStart = dpToPx(8); marginEnd = dpToPx(8)
         })
         speedBar.addView(createSmallButton("+") {
             currentSpeed = (currentSpeed + 0.25f).coerceAtMost(3.0f)
             speedLabel.text = "速度: ${String.format("%.2f", currentSpeed)}x"
         })
-        panel.addView(speedBar)
-
-        panel.addView(createDivider())
+        contentLayout.addView(speedBar)
+        contentLayout.addView(createDivider())
 
         // 点击动效开关
         val effectRow = LinearLayout(this).apply {
@@ -357,17 +355,15 @@ class FloatingWindowService : Service() {
             textSize = 13f
         })
         effectRow.addView(View(this), LinearLayout.LayoutParams(0, 0, 1f))
-        val effectSwitch = Switch(this).apply {
+        effectRow.addView(Switch(this).apply {
             isChecked = showTapEffect
             setOnCheckedChangeListener { _, checked ->
                 showTapEffect = checked
                 if (!checked) hideTapEffectOverlay()
             }
-        }
-        effectRow.addView(effectSwitch)
-        panel.addView(effectRow)
-
-        panel.addView(createDivider())
+        })
+        contentLayout.addView(effectRow)
+        contentLayout.addView(createDivider())
 
         // 校准按钮
         val calibrateBtn = LinearLayout(this).apply {
@@ -391,14 +387,19 @@ class FloatingWindowService : Service() {
             setTextColor(Color.parseColor("#6C63FF"))
             textSize = 14f
         }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { gravity = Gravity.END })
-        panel.addView(calibrateBtn, LinearLayout.LayoutParams(
+        contentLayout.addView(calibrateBtn, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
         ).apply { topMargin = dpToPx(8) })
 
-        mainPanel = panel
+        scrollView.addView(contentLayout)
+        container.addView(scrollView, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f
+        ))
+
+        mainPanel = container
 
         val params = WindowManager.LayoutParams(
-            panelW, LinearLayout.LayoutParams.WRAP_CONTENT,
+            panelW, maxPanelH,
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
             WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
             PixelFormat.TRANSPARENT
@@ -435,7 +436,6 @@ class FloatingWindowService : Service() {
         mainPanel = null
         progressText = null
         progressBar = null
-        playBtnView = null
         isMainPanelShowing = false
     }
 
@@ -446,7 +446,6 @@ class FloatingWindowService : Service() {
         progressTotal = total
         Log.d(TAG, "Progress: $current / $total")
 
-        // 在 UI 线程更新
         val handler = android.os.Handler(mainLooper)
         handler.post {
             progressText?.text = "$current / $total"
@@ -522,6 +521,7 @@ class FloatingWindowService : Service() {
             setPadding(dpToPx(16), dpToPx(12), dpToPx(16), dpToPx(12))
         }
 
+        // 标题
         val titleBar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
