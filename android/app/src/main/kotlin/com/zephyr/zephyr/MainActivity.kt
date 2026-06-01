@@ -16,12 +16,17 @@ class MainActivity : FlutterActivity() {
     private val TAP_CHANNEL = "com.zephyr.zephyr/tap"
     private val FLOATING_CHANNEL = "com.zephyr.zephyr/floating"
 
+    private var floatingMethodChannel: MethodChannel? = null
+
     companion object {
         private const val TAG = "MainActivity"
     }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+
+        // 创建悬浮窗 MethodChannel（共享实例）
+        floatingMethodChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, FLOATING_CHANNEL)
 
         // 主通信通道
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL).setMethodCallHandler { call, result ->
@@ -81,7 +86,7 @@ class MainActivity : FlutterActivity() {
         }
 
         // 悬浮窗通信通道
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, FLOATING_CHANNEL).setMethodCallHandler { call, result ->
+        floatingMethodChannel?.setMethodCallHandler { call, result ->
             when (call.method) {
                 "updateScoreList" -> {
                     val scores = call.argument<List<Map<String, String>>>("scores") ?: emptyList()
@@ -103,43 +108,48 @@ class MainActivity : FlutterActivity() {
                     result.success(true)
                 }
                 "setCallbacks" -> {
-                    // 设置回调
-                    FloatingWindowService.onPlay = {
-                        runOnUiThread {
-                            MethodChannel(flutterEngine.dartExecutor.binaryMessenger, FLOATING_CHANNEL)
-                                .invokeMethod("onPlay", null)
-                        }
-                    }
-                    FloatingWindowService.onPause = {
-                        runOnUiThread {
-                            MethodChannel(flutterEngine.dartExecutor.binaryMessenger, FLOATING_CHANNEL)
-                                .invokeMethod("onPause", null)
-                        }
-                    }
-                    FloatingWindowService.onStop = {
-                        runOnUiThread {
-                            MethodChannel(flutterEngine.dartExecutor.binaryMessenger, FLOATING_CHANNEL)
-                                .invokeMethod("onStop", null)
-                        }
-                    }
-                    FloatingWindowService.onSelectScore = { id ->
-                        runOnUiThread {
-                            MethodChannel(flutterEngine.dartExecutor.binaryMessenger, FLOATING_CHANNEL)
-                                .invokeMethod("onSelectScore", id)
-                        }
-                    }
-                    FloatingWindowService.onCalibrationChanged = { bx, by, cs, rs ->
-                        runOnUiThread {
-                            MethodChannel(flutterEngine.dartExecutor.binaryMessenger, FLOATING_CHANNEL)
-                                .invokeMethod("onCalibrationChanged", mapOf(
-                                    "baseX" to bx, "baseY" to by,
-                                    "colSpacing" to cs, "rowSpacing" to rs
-                                ))
-                        }
-                    }
+                    setupFloatingCallbacks()
                     result.success(true)
                 }
                 else -> result.notImplemented()
+            }
+        }
+    }
+
+    private fun setupFloatingCallbacks() {
+        Log.d(TAG, "Setting up floating callbacks")
+
+        FloatingWindowService.onPlay = {
+            Log.d(TAG, "onPlay callback triggered")
+            runOnUiThread {
+                floatingMethodChannel?.invokeMethod("onPlay", null)
+            }
+        }
+        FloatingWindowService.onPause = {
+            Log.d(TAG, "onPause callback triggered")
+            runOnUiThread {
+                floatingMethodChannel?.invokeMethod("onPause", null)
+            }
+        }
+        FloatingWindowService.onStop = {
+            Log.d(TAG, "onStop callback triggered")
+            runOnUiThread {
+                floatingMethodChannel?.invokeMethod("onStop", null)
+            }
+        }
+        FloatingWindowService.onSelectScore = { id ->
+            Log.d(TAG, "onSelectScore callback triggered: $id")
+            runOnUiThread {
+                floatingMethodChannel?.invokeMethod("onSelectScore", id)
+            }
+        }
+        FloatingWindowService.onCalibrationChanged = { bx, by, cs, rs ->
+            Log.d(TAG, "onCalibrationChanged callback triggered")
+            runOnUiThread {
+                floatingMethodChannel?.invokeMethod("onCalibrationChanged", mapOf(
+                    "baseX" to bx, "baseY" to by,
+                    "colSpacing" to cs, "rowSpacing" to rs
+                ))
             }
         }
     }

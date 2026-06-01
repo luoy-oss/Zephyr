@@ -7,6 +7,7 @@ import android.app.NotificationManager
 import android.app.Service
 import android.content.Intent
 import android.graphics.*
+import android.graphics.drawable.GradientDrawable
 import android.os.Build
 import android.os.IBinder
 import android.util.Log
@@ -49,7 +50,6 @@ class FloatingWindowService : Service() {
 
     // 当前状态
     private var currentSpeed = 1.0f
-    private var currentBpm = 75
     private var selectedScoreName = "未选择"
     private var isPlaying = false
 
@@ -213,7 +213,6 @@ class FloatingWindowService : Service() {
             LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
         ))
 
-        // 分隔线
         panel.addView(createDivider())
 
         // 当前曲目
@@ -232,7 +231,7 @@ class FloatingWindowService : Service() {
             setTextColor(Color.parseColor("#BBBBBB"))
             textSize = 13f
             setPadding(dpToPx(8), 0, 0, 0)
-            tag = "scoreName" // 用于后续更新
+            tag = "scoreName"
         }
         scoreRow.addView(scoreName, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
         val selectBtn = TextView(this).apply {
@@ -254,22 +253,25 @@ class FloatingWindowService : Service() {
         }
 
         val playBtn = createCircleButton("▶", "#4CAF50") {
+            Log.d(TAG, "Play button clicked")
             onPlay?.invoke()
             updatePlayState(true)
         }
-        controlRow.addView(playBtn, LinearLayout.LayoutParams(dpToPx(48), dpToPx(48)).apply { marginEnd = dpToPx(12) })
+        controlRow.addView(playBtn, LinearLayout.LayoutParams(dpToPx(52), dpToPx(52)).apply { marginEnd = dpToPx(12) })
 
         val pauseBtn = createCircleButton("⏸", "#FF9800") {
+            Log.d(TAG, "Pause button clicked")
             onPause?.invoke()
             updatePlayState(false)
         }
-        controlRow.addView(pauseBtn, LinearLayout.LayoutParams(dpToPx(48), dpToPx(48)).apply { marginEnd = dpToPx(12) })
+        controlRow.addView(pauseBtn, LinearLayout.LayoutParams(dpToPx(52), dpToPx(52)).apply { marginEnd = dpToPx(12) })
 
         val stopBtn = createCircleButton("⏹", "#F44336") {
+            Log.d(TAG, "Stop button clicked")
             onStop?.invoke()
             updatePlayState(false)
         }
-        controlRow.addView(stopBtn, LinearLayout.LayoutParams(dpToPx(48), dpToPx(48)))
+        controlRow.addView(stopBtn, LinearLayout.LayoutParams(dpToPx(52), dpToPx(52)))
         panel.addView(controlRow)
 
         panel.addView(createDivider())
@@ -295,7 +297,7 @@ class FloatingWindowService : Service() {
         speedBar.addView(speedMinus)
 
         val speedSlider = SeekBar(this).apply {
-            max = 11 // 0.25x ~ 3.0x, 共12档
+            max = 11
             progress = ((currentSpeed - 0.25f) / 0.25f).toInt()
             setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
                 override fun onProgressChanged(sb: SeekBar?, progress: Int, fromUser: Boolean) {
@@ -324,7 +326,10 @@ class FloatingWindowService : Service() {
         val calibrateBtn = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setBackgroundColor(Color.parseColor("#2A2A2A"))
+            val bg = GradientDrawable()
+            bg.setColor(Color.parseColor("#2A2A2A"))
+            bg.cornerRadius = dpToPx(8).toFloat()
+            background = bg
             setPadding(dpToPx(16), dpToPx(12), dpToPx(16), dpToPx(12))
             setOnClickListener { startCalibrationMode() }
         }
@@ -350,11 +355,11 @@ class FloatingWindowService : Service() {
 
         mainPanel = panel
 
-        // 可拖拽的窗口
+        // 创建窗口参数 - 注意：不设置 FLAG_NOT_FOCUSABLE 以允许点击
         val params = WindowManager.LayoutParams(
             panelW, LinearLayout.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+            WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
             PixelFormat.TRANSPARENT
         ).apply {
             gravity = Gravity.CENTER
@@ -396,7 +401,6 @@ class FloatingWindowService : Service() {
 
     private fun updatePlayState(playing: Boolean) {
         isPlaying = playing
-        // 更新悬浮球图标
         floatingBall?.let { ball ->
             (ball as? ImageView)?.setImageResource(
                 if (playing) android.R.drawable.ic_media_pause
@@ -407,7 +411,7 @@ class FloatingWindowService : Service() {
 
     // ========== 曲目选择器 ==========
 
-    private var scoreList: List<Pair<String, String>> = emptyList() // (id, name)
+    private var scoreList: List<Pair<String, String>> = emptyList()
 
     fun updateScoreList(scores: List<Pair<String, String>>) {
         scoreList = scores
@@ -468,7 +472,10 @@ class FloatingWindowService : Service() {
                     orientation = LinearLayout.HORIZONTAL
                     gravity = Gravity.CENTER_VERTICAL
                     setPadding(dpToPx(12), dpToPx(12), dpToPx(12), dpToPx(12))
-                    setBackgroundColor(Color.parseColor("#2A2A2A"))
+                    val bg = GradientDrawable()
+                    bg.setColor(Color.parseColor("#2A2A2A"))
+                    bg.cornerRadius = dpToPx(6).toFloat()
+                    background = bg
                     setOnClickListener {
                         selectedScoreName = name
                         onSelectScore?.invoke(id)
@@ -487,7 +494,7 @@ class FloatingWindowService : Service() {
 
                 listLayout.addView(item, LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
-                ).apply { bottomMargin = dpToPx(2) })
+                ).apply { bottomMargin = dpToPx(4) })
             }
         }
 
@@ -499,7 +506,7 @@ class FloatingWindowService : Service() {
         val params = WindowManager.LayoutParams(
             panelW, panelH,
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+            WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
             PixelFormat.TRANSPARENT
         ).apply { gravity = Gravity.CENTER }
 
@@ -517,7 +524,6 @@ class FloatingWindowService : Service() {
     private fun startCalibrationMode() {
         hideMainPanel()
 
-        // 创建校准覆盖层
         calibrationView = CalibrationOverlayView(this, baseX, baseY, colSpacing, rowSpacing).apply {
             onConfirm = { bx, by, cs, rs ->
                 baseX = bx
@@ -538,7 +544,7 @@ class FloatingWindowService : Service() {
             WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+            WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
             PixelFormat.TRANSPARENT
         )
 
@@ -556,7 +562,6 @@ class FloatingWindowService : Service() {
 
     fun updateSelectedScore(name: String) {
         selectedScoreName = name
-        // 如果主面板正在显示，更新曲目名称
         mainPanel?.findViewWithTag<TextView>("scoreName")?.text = name
     }
 
@@ -572,26 +577,57 @@ class FloatingWindowService : Service() {
     private fun createDivider(): View {
         return View(this).apply {
             setBackgroundColor(Color.parseColor("#333333"))
-        }.also {
-            (it.layoutParams ?: LinearLayout.LayoutParams(
+            layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, dpToPx(1)
-            ).apply { topMargin = dpToPx(8); bottomMargin = dpToPx(8) }).let { _ ->
-                it.layoutParams = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT, dpToPx(1)
-                ).apply { topMargin = dpToPx(8); bottomMargin = dpToPx(8) }
-            }
+            ).apply { topMargin = dpToPx(8); bottomMargin = dpToPx(8) }
         }
     }
 
-    private fun createCircleButton(text: String, color: String, onClick: () -> Unit): TextView {
-        return TextView(this).apply {
+    private fun createCircleButton(text: String, color: String, onClick: () -> Unit): FrameLayout {
+        val container = FrameLayout(this)
+
+        // 圆形背景
+        val bg = GradientDrawable()
+        bg.setColor(Color.parseColor(color))
+        bg.cornerRadius = dpToPx(26).toFloat()
+        container.background = bg
+
+        // 文字
+        val textView = TextView(this).apply {
             this.text = text
             setTextColor(Color.WHITE)
-            textSize = 18f
+            textSize = 20f
             gravity = Gravity.CENTER
-            setBackgroundColor(Color.parseColor(color))
-            setOnClickListener { onClick() }
         }
+        container.addView(textView, FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.MATCH_PARENT,
+            FrameLayout.LayoutParams.MATCH_PARENT
+        ))
+
+        // 点击效果
+        container.isClickable = true
+        container.isFocusable = true
+        container.setOnClickListener {
+            Log.d(TAG, "Button clicked: $text")
+            onClick()
+        }
+
+        // 添加按压效果
+        container.setOnTouchListener { v, event ->
+            when (event.action) {
+                MotionEvent.ACTION_DOWN -> {
+                    v.alpha = 0.7f
+                    false
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    v.alpha = 1.0f
+                    false
+                }
+                else -> false
+            }
+        }
+
+        return container
     }
 
     private fun createSmallButton(text: String, onClick: () -> Unit): TextView {
@@ -600,7 +636,10 @@ class FloatingWindowService : Service() {
             setTextColor(Color.WHITE)
             textSize = 16f
             gravity = Gravity.CENTER
-            setBackgroundColor(Color.parseColor("#3A3A3A"))
+            val bg = GradientDrawable()
+            bg.setColor(Color.parseColor("#3A3A3A"))
+            bg.cornerRadius = dpToPx(4).toFloat()
+            background = bg
             setPadding(dpToPx(12), dpToPx(4), dpToPx(12), dpToPx(4))
             setOnClickListener { onClick() }
         }
