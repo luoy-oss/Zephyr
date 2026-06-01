@@ -1,5 +1,5 @@
 name: zephyr
-description: "弹琴工具 - Sky Auto Piano Tool"
+description: "自动弹琴工具 - Auto Piano Player"
 publish_to: 'none'
 version: 1.0.0+1
 

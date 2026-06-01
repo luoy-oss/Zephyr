@@ -1,6 +1,6 @@
 import 'dart:convert';
 
-/// 琴键位置配置 - 定义光遇钢琴在屏幕上的位置
+/// 琴键位置配置 - 定义钢琴在屏幕上的位置
 class KeyPositionConfig {
   /// 基准X坐标（左上角第一个琴键 -1 的X）
   final double baseX;

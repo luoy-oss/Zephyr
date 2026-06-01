@@ -177,7 +177,7 @@ class SettingsScreen extends ConsumerWidget {
         child: Column(
           children: [
             const Text(
-              '光遇钢琴布局',
+              '默认钢琴布局 (3×5)',
               style: TextStyle(color: AppColors.textSecondary),
             ),
             const SizedBox(height: 12),

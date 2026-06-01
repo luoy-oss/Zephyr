@@ -1,4 +1,4 @@
-/// 音符模型 - 对应光遇琴键上的一个音
+/// 音符模型 - 对应琴键上的一个音
 class Note {
   /// 显示名称 (如 "1", "-1", "+1")
   final String name;
@@ -27,7 +27,7 @@ class Note {
   int get hashCode => name.hashCode;
 }
 
-/// 光遇钢琴的15个音符定义
+/// 预设钢琴布局的15个音符定义（兼容3行5列布局）
 class SkyNotes {
   static const List<Note> all = [
     // 第0行：低音区

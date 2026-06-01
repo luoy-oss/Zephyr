@@ -68,7 +68,7 @@ jobs:
           body: |
             ## Zephyr ${{ steps.version.outputs.VERSION }}
 
-            光遇自动弹琴工具
+            自动弹琴工具
 
             ### 下载说明
 

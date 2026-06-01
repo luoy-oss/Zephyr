@@ -65,7 +65,7 @@ class _AgreementScreenState extends ConsumerState<AgreementScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Zephyr - 光遇自动弹琴工具',
+                    'Zephyr - 自动弹琴工具',
                     style: TextStyle(
                       fontSize: 20,
                       fontWeight: FontWeight.bold,
@@ -84,7 +84,7 @@ class _AgreementScreenState extends ConsumerState<AgreementScreen> {
                     '本软件作者（luoy-oss）坚决反对利用本软件进行以下行为：\n\n'
                     '• 任何形式的作弊行为：包括但不限于利用本软件在游戏中获取不正当优势\n'
                     '• 破坏游戏公平性：包括但不限于在多人场景中干扰其他玩家体验\n'
-                    '• 违反游戏条款：包括但不限于违反《光遇》游戏用户协议的行为\n'
+                    '• 违反游戏条款：包括但不限于违反游戏用户协议的行为\n'
                     '• 商业牟利：包括但不限于利用本软件进行任何形式的商业活动\n'
                     '• 侵犯他人权益：包括但不限于利用本软件干扰他人正常使用游戏',
                   ),

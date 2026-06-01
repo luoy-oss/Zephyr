@@ -1,6 +1,6 @@
 class AppStrings {
   static const appName = 'Zephyr';
-  static const appTitle = '光遇自动弹琴';
+  static const appTitle = 'Zephyr 自动弹琴';
 
   // 权限相关
   static const accessibilityPermission = '无障碍权限';

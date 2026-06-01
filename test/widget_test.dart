@@ -6,6 +6,6 @@ import 'package:zephyr/app.dart';
 void main() {
   testWidgets('App smoke test', (WidgetTester tester) async {
     await tester.pumpWidget(const ProviderScope(child: ZephyrApp()));
-    expect(find.text('光遇自动弹琴'), findsOneWidget);
+    expect(find.text('Zephyr 自动弹琴'), findsOneWidget);
   });
 }
