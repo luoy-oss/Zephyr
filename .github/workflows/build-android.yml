@@ -4,6 +4,7 @@ on:
   push:
     tags:
       - 'v[0-9]+.[0-9]+.[0-9]+'
+      - 'v[0-9]+.[0-9]+.[0-9]+-*'
 
 permissions:
   contents: write
@@ -60,15 +61,29 @@ jobs:
         id: version
         run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
 
+      - name: Check if pre-release
+        id: prerelease
+        run: |
+          VERSION="${{ steps.version.outputs.VERSION }}"
+          if [[ "$VERSION" == *"beta"* ]] || [[ "$VERSION" == *"alpha"* ]] || [[ "$VERSION" == *"pre"* ]] || [[ "$VERSION" == *"rc"* ]]; then
+            echo "IS_PRERELEASE=true" >> $GITHUB_OUTPUT
+            echo "RELEASE_TYPE=Pre-release" >> $GITHUB_OUTPUT
+          else
+            echo "IS_PRERELEASE=false" >> $GITHUB_OUTPUT
+            echo "RELEASE_TYPE=Release" >> $GITHUB_OUTPUT
+          fi
+
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.version.outputs.VERSION }}
           name: "Zephyr ${{ steps.version.outputs.VERSION }}"
           body: |
-            ## Zephyr ${{ steps.version.outputs.VERSION }}
+            ## Zephyr ${{ steps.version.outputs.VERSION }} (${{ steps.prerelease.outputs.RELEASE_TYPE }})
 
             自动弹琴工具
+
+            ${{ steps.prerelease.outputs.IS_PRERELEASE == 'true' && '> ⚠️ **这是一个预发布版本，可能存在问题**' || '' }}
 
             ### 下载说明
 
@@ -84,4 +99,4 @@ jobs:
             artifacts/apk-armeabi-v7a/zephyr-*.apk
             artifacts/apk-x86_64/zephyr-*.apk
           draft: false
-          prerelease: false
+          prerelease: ${{ steps.prerelease.outputs.IS_PRERELEASE == 'true' }}
