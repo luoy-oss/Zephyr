@@ -273,8 +273,8 @@ class CalibrationOverlayView(
 
         // 顶部提示
         canvas.drawText("第二步：调整琴键间距", w / 2f, 60f, titlePaint.apply { color = Color.WHITE })
-        canvas.drawText("拖动网格整体位置 · 双指缩放或按钮微调间距", w / 2f, 100f, hintPaint)
-        canvas.drawText("红色「-1」为第一步定位的基准点", w / 2f, 135f, smallHintPaint)
+        canvas.drawText("使用下方按钮或双指缩放调整行/列间距", w / 2f, 100f, hintPaint)
+        canvas.drawText("红色「-1」锁定在第一步定位的位置，不可拖动", w / 2f, 135f, smallHintPaint)
 
         // ===== 底部控制面板 =====
         canvas.drawRect(0f, panelTop, w, h, panelPaint)
@@ -344,41 +344,21 @@ class CalibrationOverlayView(
                     return true
                 }
 
-                // 第一步：触摸十字准心区域开始拖动
+                // 第一步：触摸任意位置开始拖动准心
                 if (step == 1) {
                     isDragging = true
                     lastTouchX = x
                     lastTouchY = y
                     return true
                 }
-
-                // 第二步：触摸琴键区域拖动整体位置
-                if (step == 2) {
-                    val keyAreaLeft = lockedX - 50f
-                    val keyAreaTop = lockedY - 50f
-                    val keyAreaRight = lockedX + 4 * colSpacing + 50f
-                    val keyAreaBottom = lockedY + 2 * rowSpacing + 50f
-
-                    if (x in keyAreaLeft..keyAreaRight && y in keyAreaTop..keyAreaBottom) {
-                        isDragging = true
-                        lastTouchX = x
-                        lastTouchY = y
-                        return true
-                    }
-                }
+                // 第二步：不允许拖动，网格锁定在第一步位置
+                // 只能通过底部面板按钮或双指缩放调整间距
             }
 
             MotionEvent.ACTION_MOVE -> {
-                if (isDragging && event.pointerCount == 1) {
-                    val dx = event.x - lastTouchX
-                    val dy = event.y - lastTouchY
-                    if (step == 1) {
-                        baseX += dx
-                        baseY += dy
-                    } else {
-                        lockedX += dx
-                        lockedY += dy
-                    }
+                if (isDragging && step == 1 && event.pointerCount == 1) {
+                    baseX += event.x - lastTouchX
+                    baseY += event.y - lastTouchY
                     lastTouchX = event.x
                     lastTouchY = event.y
                     invalidate()

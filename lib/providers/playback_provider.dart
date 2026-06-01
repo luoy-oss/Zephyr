@@ -129,16 +129,6 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
     }
   }
 
-  /// 根据乐曲 BPM 自动缩放速度
-  /// 乐曲 BPM / 用户设置的基准 BPM = 播放速度倍率
-  void autoScaleSpeed(int songBpm) {
-    final baseBpm = ref.read(bpmProvider);
-    if (baseBpm > 0) {
-      final ratio = songBpm / baseBpm;
-      setSpeed(ratio.clamp(0.1, 10.0));
-    }
-  }
-
   /// 获取当前待播放的事件（用于预显示下一个按键）
   ScoreEvent? get currentEvent {
     final scoreState = ref.read(scoreListProvider);

@@ -89,11 +89,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
       onPlay: () {
         final notifier = ref.read(playbackProvider.notifier);
         notifier.setOnNoteEvent(_onNoteEvent);
-        // 根据乐曲 BPM 自动缩放速度
-        final selectedScore = ref.read(scoreListProvider).selectedScore;
-        if (selectedScore != null) {
-          notifier.autoScaleSpeed(selectedScore.bpm);
-        }
         notifier.play();
       },
       onPause: () => ref.read(playbackProvider.notifier).pause(),
@@ -717,13 +712,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
                     notifier.pause();
                   } else {
                     notifier.setOnNoteEvent(_onNoteEvent);
-                    // 根据乐曲 BPM 自动缩放速度
-                    if (playbackState.status == PlaybackStatus.idle) {
-                      final selectedScore = ref.read(scoreListProvider).selectedScore;
-                      if (selectedScore != null) {
-                        notifier.autoScaleSpeed(selectedScore.bpm);
-                      }
-                    }
                     notifier.play();
                   }
                 },
