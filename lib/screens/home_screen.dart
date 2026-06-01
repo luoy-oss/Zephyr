@@ -12,7 +12,6 @@ import '../providers/settings_provider.dart';
 import '../services/accessibility_service.dart';
 import '../widgets/score_card.dart';
 import 'settings_screen.dart';
-import 'calibration_screen.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
@@ -26,6 +25,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
   bool _hasOverlay = false;
   bool _isFloatingRunning = false;
   bool _isChecking = true;
+  bool _callbacksSet = false;
 
   @override
   void initState() {
@@ -61,7 +61,63 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
         _isFloatingRunning = floatingRunning;
         _isChecking = false;
       });
+
+      // 如果悬浮窗运行中且还没设置回调，设置回调
+      if (floatingRunning && !_callbacksSet) {
+        _setupFloatingCallbacks();
+      }
     }
+  }
+
+  void _setupFloatingCallbacks() {
+    NativeService.setFloatingCallbacks(
+      onPlay: () {
+        final notifier = ref.read(playbackProvider.notifier);
+        notifier.setOnNoteEvent(_onNoteEvent);
+        notifier.play();
+      },
+      onPause: () {
+        ref.read(playbackProvider.notifier).pause();
+      },
+      onStop: () {
+        ref.read(playbackProvider.notifier).stop();
+      },
+      onSelectScore: (id) {
+        ref.read(scoreListProvider.notifier).selectScore(id);
+      },
+      onCalibrationChanged: (baseX, baseY, colSpacing, rowSpacing) {
+        ref.read(settingsProvider.notifier).updateConfig(
+          ref.read(settingsProvider).copyWith(
+            baseX: baseX, baseY: baseY,
+            columnSpacing: colSpacing, rowSpacing: rowSpacing,
+          ),
+        );
+      },
+    );
+    _callbacksSet = true;
+
+    // 同步当前数据到悬浮窗
+    _syncDataToFloating();
+  }
+
+  void _syncDataToFloating() {
+    // 同步曲目列表
+    final scores = ref.read(scoreListProvider).scores;
+    NativeService.updateScoreList(
+      scores.map((s) => {'id': s.id, 'name': s.name}).toList(),
+    );
+
+    // 同步当前选中曲目
+    final selectedScore = ref.read(scoreListProvider).selectedScore;
+    if (selectedScore != null) {
+      NativeService.updateSelectedScore(selectedScore.name);
+    }
+
+    // 同步校准配置
+    final config = ref.read(settingsProvider);
+    NativeService.updateFloatingConfig(
+      config.baseX, config.baseY, config.columnSpacing, config.rowSpacing,
+    );
   }
 
   @override
@@ -70,7 +126,18 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
     final playbackState = ref.watch(playbackProvider);
     final filteredScores = ref.watch(filteredScoresProvider);
 
-    // 权限检查中显示加载状态
+    // 监听状态变化，同步到悬浮窗
+    ref.listen(scoreListProvider, (prev, next) {
+      if (_isFloatingRunning) {
+        NativeService.updateScoreList(
+          next.scores.map((s) => {'id': s.id, 'name': s.name}).toList(),
+        );
+        if (next.selectedScore != null) {
+          NativeService.updateSelectedScore(next.selectedScore!.name);
+        }
+      }
+    });
+
     if (_isChecking) {
       return const Scaffold(
         body: Center(
@@ -90,30 +157,18 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
       appBar: AppBar(
         title: const Text(AppStrings.appTitle),
         actions: [
-          // 权限状态指示
           if (!_hasAccessibility || !_hasOverlay)
             IconButton(
               icon: const Icon(Icons.warning, color: AppColors.error),
               onPressed: _showPermissionDialog,
               tooltip: '权限不足',
             ),
-          // 设置按钮
           IconButton(
             icon: const Icon(Icons.settings),
             onPressed: () => Navigator.push(
               context,
               MaterialPageRoute(builder: (_) => const SettingsScreen()),
             ),
-          ),
-          // 校准按钮
-          IconButton(
-            icon: const Icon(Icons.tune),
-            onPressed: _hasOverlay
-                ? () => Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (_) => const CalibrationScreen()),
-                    )
-                : () => _showPermissionDialog(),
           ),
         ],
       ),
@@ -123,8 +178,30 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
           _buildFloatingToggleCard(),
 
           // 权限提示
-          if (!_hasAccessibility || !_hasOverlay)
-            _buildPermissionBanner(),
+          if (!_hasAccessibility || !_hasOverlay) _buildPermissionBanner(),
+
+          // 提示卡片
+          if (_isFloatingRunning)
+            Container(
+              margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppColors.primary.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Row(
+                children: [
+                  Icon(Icons.info_outline, color: AppColors.primary, size: 20),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      '点击悬浮球打开控制面板，可在游戏中选择曲目、校准琴键位置',
+                      style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                    ),
+                  ),
+                ],
+              ),
+            ),
 
           // 搜索栏
           Padding(
@@ -167,6 +244,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
                             isSelected: isSelected,
                             onTap: () {
                               ref.read(scoreListProvider.notifier).selectScore(score.id);
+                              if (_isFloatingRunning) {
+                                NativeService.updateSelectedScore(score.name);
+                              }
                             },
                             onDelete: () => _confirmDelete(score.id, score.name),
                           );
@@ -188,13 +268,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
       margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
-        color: _isFloatingRunning
-            ? AppColors.primary.withOpacity(0.2)
-            : AppColors.surface,
+        color: _isFloatingRunning ? AppColors.primary.withOpacity(0.2) : AppColors.surface,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
           color: _isFloatingRunning ? AppColors.primary : Colors.transparent,
-          width: 1,
         ),
       ),
       child: Row(
@@ -209,16 +286,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
-                  '悬浮窗控制',
-                  style: TextStyle(fontWeight: FontWeight.bold),
-                ),
+                const Text('悬浮窗控制', style: TextStyle(fontWeight: FontWeight.bold)),
                 Text(
-                  _isFloatingRunning ? '运行中 - 点击小球展开控制面板' : '已关闭',
-                  style: const TextStyle(
-                    fontSize: 12,
-                    color: AppColors.textSecondary,
-                  ),
+                  _isFloatingRunning ? '运行中 - 点击悬浮球打开控制面板' : '已关闭',
+                  style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
                 ),
               ],
             ),
@@ -228,22 +299,16 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
             activeColor: AppColors.primary,
             onChanged: (value) async {
               if (value) {
-                // 检查权限
-                if (!_hasOverlay) {
-                  _showPermissionDialog();
-                  return;
-                }
-                if (!_hasAccessibility) {
-                  _showPermissionDialog();
-                  return;
-                }
+                if (!_hasOverlay) { _showPermissionDialog(); return; }
+                if (!_hasAccessibility) { _showPermissionDialog(); return; }
                 await NativeService.startFloatingWindow();
+                await Future.delayed(const Duration(milliseconds: 500));
+                await _checkAllPermissions();
+                if (_isFloatingRunning) _setupFloatingCallbacks();
               } else {
                 await NativeService.stopFloatingWindow();
+                setState(() { _isFloatingRunning = false; _callbacksSet = false; });
               }
-              // 延迟检查状态
-              await Future.delayed(const Duration(milliseconds: 500));
-              _checkAllPermissions();
             },
           ),
         ],
@@ -267,13 +332,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
             children: [
               Icon(Icons.warning, color: AppColors.error, size: 20),
               SizedBox(width: 8),
-              Text(
-                '需要授予权限',
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  color: AppColors.error,
-                ),
-              ),
+              Text('需要授予权限', style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.error)),
             ],
           ),
           const SizedBox(height: 8),
@@ -318,13 +377,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(title, style: const TextStyle(fontWeight: FontWeight.w500)),
-                    Text(
-                      subtitle,
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: AppColors.textSecondary,
-                      ),
-                    ),
+                    Text(subtitle, style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
                   ],
                 ),
               ),
@@ -350,13 +403,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
           Row(
             children: [
               Expanded(
-                child: Text(
-                  score.name,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 16,
-                  ),
-                ),
+                child: Text(score.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
               ),
               if (playbackState.status != PlaybackStatus.idle)
                 Text(
@@ -381,11 +428,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
                   padding: const EdgeInsets.only(right: 16),
                   child: Text(
                     '${playbackState.countdownRemaining}秒后开始',
-                    style: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: AppColors.primary,
-                    ),
+                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.primary),
                   ),
                 ),
               IconButton(
@@ -412,9 +455,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
                 IconButton(
                   iconSize: 36,
                   icon: const Icon(Icons.stop_circle, color: AppColors.error),
-                  onPressed: () {
-                    ref.read(playbackProvider.notifier).stop();
-                  },
+                  onPressed: () => ref.read(playbackProvider.notifier).stop(),
                 ),
               const SizedBox(width: 16),
               const Text('速度:'),
@@ -426,9 +467,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
                   max: 3.0,
                   divisions: 11,
                   label: '${playbackState.speed.toStringAsFixed(2)}x',
-                  onChanged: (value) {
-                    ref.read(playbackProvider.notifier).setSpeed(value);
-                  },
+                  onChanged: (value) => ref.read(playbackProvider.notifier).setSpeed(value),
                 ),
               ),
             ],
@@ -445,10 +484,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
         children: [
           Icon(Icons.music_note, size: 64, color: AppColors.textSecondary),
           SizedBox(height: 16),
-          Text(
-            AppStrings.noScores,
-            style: TextStyle(color: AppColors.textSecondary, fontSize: 16),
-          ),
+          Text(AppStrings.noScores, style: TextStyle(color: AppColors.textSecondary, fontSize: 16)),
         ],
       ),
     );
@@ -456,38 +492,26 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
 
   Future<void> _importScore() async {
     try {
-      final result = await FilePicker.platform.pickFiles(
-        type: FileType.custom,
-        allowedExtensions: ['txt'],
-      );
-
+      final result = await FilePicker.platform.pickFiles(type: FileType.custom, allowedExtensions: ['txt']);
       if (result != null && result.files.isNotEmpty) {
         final file = result.files.first;
         String content;
-
         if (file.bytes != null) {
           content = String.fromCharCodes(file.bytes!);
         } else if (file.path != null) {
-          final fileObj = await File(file.path!).readAsBytes();
-          content = String.fromCharCodes(fileObj);
+          content = String.fromCharCodes(await File(file.path!).readAsBytes());
         } else {
           return;
         }
-
         final name = file.name.replaceAll('.txt', '');
         await ref.read(scoreListProvider.notifier).importScore(name, content);
-
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('已导入: $name')),
-          );
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('已导入: $name')));
         }
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('导入失败: $e')),
-        );
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('导入失败: $e')));
       }
     }
   }
@@ -499,10 +523,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
         title: const Text(AppStrings.deleteScore),
         content: Text('${AppStrings.deleteConfirm}\n$name'),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('取消'),
-          ),
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('取消')),
           TextButton(
             onPressed: () {
               ref.read(scoreListProvider.notifier).deleteScore(id);
@@ -526,7 +547,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
           children: [
             const Text('Zephyr 需要以下权限才能正常工作：'),
             const SizedBox(height: 16),
-            if (!_hasAccessibility) ...[
+            if (!_hasAccessibility)
               ListTile(
                 leading: const Icon(Icons.accessibility_new, color: AppColors.primary),
                 title: const Text('无障碍权限'),
@@ -537,8 +558,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
                   Navigator.pop(context);
                 },
               ),
-            ],
-            if (!_hasOverlay) ...[
+            if (!_hasOverlay)
               ListTile(
                 leading: const Icon(Icons.layers, color: AppColors.primary),
                 title: const Text('悬浮窗权限'),
@@ -549,38 +569,27 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
                   Navigator.pop(context);
                 },
               ),
-            ],
             const SizedBox(height: 8),
-            const Text(
-              '授予权限后返回应用，状态会自动更新',
-              style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
-            ),
+            const Text('授予权限后返回应用，状态会自动更新',
+              style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
           ],
         ),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('关闭'),
-          ),
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('关闭')),
         ],
       ),
     );
   }
 
-  /// 音符事件回调 - 执行实际的屏幕点击
   void _onNoteEvent(dynamic event) {
     final config = ref.read(settingsProvider);
     final notes = event.notes as List;
-
     if (notes.length == 1) {
       final note = notes[0];
-      final x = config.getX(note.col);
-      final y = config.getY(note.row);
-      NativeService.tap(x, y, config.tapDurationMs);
+      NativeService.tap(config.getX(note.col), config.getY(note.row), config.tapDurationMs);
     } else if (notes.length > 1) {
       final points = notes.map<List<double>>((note) => [
-        config.getX(note.col),
-        config.getY(note.row),
+        config.getX(note.col), config.getY(note.row),
       ]).toList();
       NativeService.tapMultiple(points, config.tapDurationMs);
     }
