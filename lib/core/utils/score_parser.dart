@@ -135,7 +135,7 @@ class ScoreParser {
         DebugLog.d('  ... 还有 ${sortedTimes.length - previewCount} 个时间点');
       }
 
-      // 【修复】转换为事件列表，不自动插入休止符
+      // 转换为事件列表，保留时间戳用于计算间隔
       for (final time in sortedTimes) {
         final keys = timeGroups[time]!;
         final notes = <Note>[];
@@ -150,8 +150,7 @@ class ScoreParser {
         }
 
         if (notes.isNotEmpty) {
-          // 多个音符 → 和弦事件；单个音符 → 单音事件
-          events.add(ScoreEvent.note(notes));
+          events.add(ScoreEvent.note(notes, time: time));
         }
       }
 

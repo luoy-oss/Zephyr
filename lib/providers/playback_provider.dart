@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../core/utils/debug_log.dart';
 import '../models/score.dart';
 import 'score_provider.dart';
 import 'settings_provider.dart';
@@ -20,7 +21,7 @@ class PlaybackState {
   final int currentEventIndex;
   final int totalEvents;
   final int countdownRemaining;
-  final double speed; // BPM倍率 (1.0 = 原速)
+  final double speed; // 速度倍率 (1.0 = 原速)
 
   const PlaybackState({
     this.status = PlaybackStatus.idle,
@@ -54,7 +55,7 @@ class PlaybackState {
       currentEventIndex < totalEvents ? currentEventIndex : totalEvents;
 }
 
-/// 播放引擎
+/// 播放引擎 - 基于事件时间戳的变间隔播放
 class PlaybackNotifier extends StateNotifier<PlaybackState> {
   final Ref ref;
   Timer? _timer;
@@ -71,7 +72,7 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
     if (state.status == PlaybackStatus.paused) {
       // 恢复播放
       state = state.copyWith(status: PlaybackStatus.playing);
-      _startTimer();
+      _scheduleNextEvent();
       return;
     }
 
@@ -92,7 +93,7 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
             status: PlaybackStatus.playing,
             countdownRemaining: 0,
           );
-          _startTimer();
+          _scheduleNextEvent();
         } else {
           state = state.copyWith(countdownRemaining: remaining);
         }
@@ -103,7 +104,7 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
         totalEvents: score.events.length,
         currentEventIndex: 0,
       );
-      _startTimer();
+      _scheduleNextEvent();
     }
   }
 
@@ -124,8 +125,9 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
   void setSpeed(double speed) {
     state = state.copyWith(speed: speed.clamp(0.1, 10.0));
     if (state.status == PlaybackStatus.playing) {
+      // 速度改变后重新调度下一个事件
       _timer?.cancel();
-      _startTimer();
+      _scheduleNextEvent();
     }
   }
 
@@ -149,34 +151,53 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
     return score.events[idx];
   }
 
-  /// 启动播放定时器
-  void _startTimer() {
-    final bpm = ref.read(bpmProvider);
-    final intervalMs = (60000 / bpm / state.speed).round();
+  /// 调度下一个事件（基于时间戳计算延迟）
+  void _scheduleNextEvent() {
+    final scoreState = ref.read(scoreListProvider);
+    final score = scoreState.selectedScore;
+    if (score == null) return;
 
-    _timer = Timer.periodic(Duration(milliseconds: intervalMs), (timer) {
-      final scoreState = ref.read(scoreListProvider);
-      final score = scoreState.selectedScore;
-      if (score == null) {
-        stop();
-        return;
+    final idx = state.currentEventIndex;
+    if (idx >= score.events.length) {
+      stop();
+      return;
+    }
+
+    final event = score.events[idx];
+
+    // 触发当前事件
+    if (!event.isRest) {
+      _onNoteEvent?.call(event);
+    }
+
+    // 计算到下一个事件的延迟
+    final nextIdx = idx + 1;
+    if (nextIdx >= score.events.length) {
+      // 最后一个事件，播放完成
+      state = state.copyWith(currentEventIndex: nextIdx);
+      // 延迟一小段时间后停止
+      _timer = Timer(const Duration(milliseconds: 500), () => stop());
+      return;
+    }
+
+    final nextEvent = score.events[nextIdx];
+    final timeDiff = nextEvent.time - event.time;
+
+    // 延迟计算：timeDiff * msPerTick / speed
+    // msPerTick = 60000 / (bpm * 480)，其中 480 是标准 MIDI 每拍 tick 数
+    final bpm = score.bpm > 0 ? score.bpm : 500;
+    final msPerTick = 60000.0 / (bpm * 480);
+    final delayMs = (timeDiff * msPerTick / state.speed).round().clamp(10, 10000);
+
+    DebugLog.d('播放 #${idx}: delay=${delayMs}ms '
+        '(timeDiff=$timeDiff, bpm=$bpm, speed=${state.speed})');
+
+    state = state.copyWith(currentEventIndex: nextIdx);
+
+    _timer = Timer(Duration(milliseconds: delayMs), () {
+      if (state.status == PlaybackStatus.playing) {
+        _scheduleNextEvent();
       }
-
-      final idx = state.currentEventIndex;
-      if (idx >= score.events.length) {
-        stop();
-        return;
-      }
-
-      final event = score.events[idx];
-
-      // 通知回调（由UI层监听并执行点击）
-      if (!event.isRest) {
-        _onNoteEvent?.call(event);
-      }
-
-      // 移动到下一个事件
-      state = state.copyWith(currentEventIndex: idx + 1);
     });
   }
 

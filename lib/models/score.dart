@@ -11,18 +11,22 @@ class ScoreEvent {
   /// 段落标记（如 "前奏"、"主歌A"），null表示无标记
   final String? section;
 
+  /// 时间戳（原始 JSON 中的 time 值，用于计算事件间隔）
+  final int time;
+
   const ScoreEvent({
     required this.notes,
     this.isRest = false,
     this.section,
+    this.time = 0,
   });
 
-  factory ScoreEvent.rest({String? section}) {
-    return ScoreEvent(notes: [], isRest: true, section: section);
+  factory ScoreEvent.rest({String? section, int time = 0}) {
+    return ScoreEvent(notes: [], isRest: true, section: section, time: time);
   }
 
-  factory ScoreEvent.note(List<Note> notes, {String? section}) {
-    return ScoreEvent(notes: notes, isRest: false, section: section);
+  factory ScoreEvent.note(List<Note> notes, {String? section, int time = 0}) {
+    return ScoreEvent(notes: notes, isRest: false, section: section, time: time);
   }
 }
 
