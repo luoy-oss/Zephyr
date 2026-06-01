@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:ui';
 
@@ -820,14 +821,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
       final result = await FilePicker.platform.pickFiles(type: FileType.custom, allowedExtensions: ['txt']);
       if (result != null && result.files.isNotEmpty) {
         final file = result.files.first;
-        String content;
+        List<int> bytes;
         if (file.bytes != null) {
-          content = String.fromCharCodes(file.bytes!);
+          bytes = file.bytes!;
         } else if (file.path != null) {
-          content = String.fromCharCodes(await File(file.path!).readAsBytes());
+          bytes = await File(file.path!).readAsBytes();
         } else {
           return;
         }
+        final content = _decodeText(bytes);
         final name = file.name.replaceAll('.txt', '');
         await ref.read(scoreListProvider.notifier).importScore(name, content);
         _showSnackBar('已导入: $name');
@@ -906,6 +908,28 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
         ],
       ),
     );
+  }
+
+  /// 自动检测编码并解码文本（支持 UTF-8、UTF-16 LE/BE）
+  String _decodeText(List<int> bytes) {
+    if (bytes.length >= 2 && bytes[0] == 0xFF && bytes[1] == 0xFE) {
+      // UTF-16 LE BOM
+      final codeUnits = <int>[];
+      for (var i = 2; i < bytes.length - 1; i += 2) {
+        codeUnits.add(bytes[i] | (bytes[i + 1] << 8));
+      }
+      return String.fromCharCodes(codeUnits);
+    }
+    if (bytes.length >= 2 && bytes[0] == 0xFE && bytes[1] == 0xFF) {
+      // UTF-16 BE BOM
+      final codeUnits = <int>[];
+      for (var i = 2; i < bytes.length - 1; i += 2) {
+        codeUnits.add((bytes[i] << 8) | bytes[i + 1]);
+      }
+      return String.fromCharCodes(codeUnits);
+    }
+    // 默认 UTF-8
+    return utf8.decode(bytes, allowMalformed: true);
   }
 
   void _onNoteEvent(dynamic event) {
