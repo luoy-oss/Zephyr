@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../core/utils/debug_log.dart';
 import '../models/key_position.dart';
 
 /// 设置状态管理
@@ -71,3 +72,38 @@ final settingsProvider =
 
 /// BPM Provider（默认75）
 final bpmProvider = StateProvider<double>((ref) => 75);
+
+/// Debug 模式状态管理
+class DebugModeNotifier extends StateNotifier<bool> {
+  static const _prefsKey = 'debug_mode_enabled';
+
+  DebugModeNotifier() : super(false) {
+    _load();
+  }
+
+  Future<void> _load() async {
+    final prefs = await SharedPreferences.getInstance();
+    state = prefs.getBool(_prefsKey) ?? false;
+    DebugLog.enabled = state;
+  }
+
+  Future<void> toggle() async {
+    state = !state;
+    DebugLog.enabled = state;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_prefsKey, state);
+  }
+
+  Future<void> setEnabled(bool value) async {
+    state = value;
+    DebugLog.enabled = value;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_prefsKey, value);
+  }
+}
+
+/// Debug 模式 Provider
+final debugModeProvider =
+    StateNotifierProvider<DebugModeNotifier, bool>((ref) {
+  return DebugModeNotifier();
+});

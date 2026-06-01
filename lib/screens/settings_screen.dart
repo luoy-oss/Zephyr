@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/constants/app_colors.dart';
 import '../core/constants/app_strings.dart';
+import '../core/utils/debug_log.dart';
 import '../providers/settings_provider.dart';
 
 class SettingsScreen extends ConsumerWidget {
@@ -12,6 +13,7 @@ class SettingsScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final config = ref.watch(settingsProvider);
     final bpm = ref.watch(bpmProvider);
+    final debugMode = ref.watch(debugModeProvider);
 
     return Scaffold(
       appBar: AppBar(
@@ -102,6 +104,27 @@ class SettingsScreen extends ConsumerWidget {
           // 琴键预览
           _buildSectionTitle('琴键预览'),
           _buildPianoPreview(config),
+
+          const SizedBox(height: 24),
+
+          // 调试模式
+          _buildSectionTitle('调试'),
+          _buildCard([
+            SwitchListTile(
+              secondary: const Icon(Icons.bug_report_rounded, color: AppColors.primary, size: 20),
+              title: const Text('Debug 日志模式', style: TextStyle(fontSize: 14)),
+              subtitle: Text(
+                debugMode ? '已开启 - 解析过程会输出详细日志' : '已关闭',
+                style: const TextStyle(color: AppColors.textTertiary, fontSize: 12),
+              ),
+              value: debugMode,
+              activeColor: AppColors.primary,
+              onChanged: (value) {
+                ref.read(debugModeProvider.notifier).setEnabled(value);
+                DebugLog.d('Debug 模式已${value ? "开启" : "关闭"}');
+              },
+            ),
+          ]),
         ],
       ),
     );
