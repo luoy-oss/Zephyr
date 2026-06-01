@@ -67,11 +67,12 @@ class FloatingWindowService : Service() {
     private var progressText: TextView? = null
     private var progressBar: ProgressBar? = null
 
-    // 校准参数
-    private var baseX = 200f
-    private var baseY = 500f
+    // 校准参数（默认值在 onCreate 中根据屏幕尺寸初始化）
+    private var baseX = 0f
+    private var baseY = 0f
     private var colSpacing = 150f
     private var rowSpacing = 120f
+    private var defaultsInitialized = false
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -80,6 +81,16 @@ class FloatingWindowService : Service() {
         instance = this
         isRunning = true
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
+
+        // 根据屏幕尺寸设置默认校准位置（屏幕中央偏下）
+        if (!defaultsInitialized) {
+            val dm = resources.displayMetrics
+            baseX = dm.widthPixels / 2f - 2 * colSpacing  // 第一个键在屏幕中央偏左
+            baseY = dm.heightPixels * 0.45f                 // 屏幕 45% 高度处
+            defaultsInitialized = true
+            Log.i(TAG, "Default calibration: baseX=$baseX, baseY=$baseY, screen=${dm.widthPixels}x${dm.heightPixels}")
+        }
+
         createNotificationChannel()
         startForeground(NOTIFICATION_ID, createNotification())
         showFloatingBall()
@@ -402,6 +413,27 @@ class FloatingWindowService : Service() {
             LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
         ).apply { topMargin = dpToPx(8) })
 
+        // 调试：测试点击按钮
+        val testBtn = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            val bg = GradientDrawable()
+            bg.setColor(Color.parseColor("#2A2A2A"))
+            bg.cornerRadius = dpToPx(8).toFloat()
+            background = bg
+            setPadding(dpToPx(16), dpToPx(12), dpToPx(16), dpToPx(12))
+            setOnClickListener { testTapAllKeys() }
+        }
+        testBtn.addView(TextView(this).apply { text = "🐛"; textSize = 16f })
+        testBtn.addView(TextView(this).apply {
+            text = "  调试：点击所有琴键"
+            setTextColor(Color.parseColor("#FF9800"))
+            textSize = 14f
+        })
+        contentLayout.addView(testBtn, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
+        ).apply { topMargin = dpToPx(4) })
+
         scrollView.addView(contentLayout)
         container.addView(scrollView, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f
@@ -622,6 +654,44 @@ class FloatingWindowService : Service() {
         if (!playing) {
             updateProgress(0, progressTotal)
         }
+    }
+
+    // ========== 调试：测试点击 ==========
+
+    private val noteNames = arrayOf(
+        arrayOf("-1", "-2", "-3", "-4", "-5"),
+        arrayOf("-6", "-7", "1", "2", "3"),
+        arrayOf("4", "5", "6", "7", "+1")
+    )
+
+    private fun testTapAllKeys() {
+        val service = PianoAccessibilityService.instance ?: run {
+            Log.e(TAG, "Test tap: accessibility service not available")
+            return
+        }
+
+        Log.d(TAG, "=== 调试点击测试 ===")
+        Log.d(TAG, "baseX=$baseX, baseY=$baseY, colSpacing=$colSpacing, rowSpacing=$rowSpacing")
+
+        Thread {
+            for (row in 0..2) {
+                for (col in 0..4) {
+                    val x = baseX + col * colSpacing
+                    val y = baseY + row * rowSpacing
+                    val name = noteNames[row][col]
+                    Log.d(TAG, "$name (row=$row, col=$col) → ($x, $y)")
+
+                    service.performTap(x, y, 100L)
+
+                    if (showTapEffect) {
+                        showTapAt(x, y)
+                    }
+
+                    Thread.sleep(300)
+                }
+            }
+            Log.d(TAG, "=== 调试点击测试完成 ===")
+        }.start()
     }
 
     // ========== 曲目选择器 ==========

@@ -125,9 +125,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
       NativeService.updateSelectedScore(selectedScore.name);
     }
     final config = ref.read(settingsProvider);
-    NativeService.updateFloatingConfig(
-      config.baseX, config.baseY, config.columnSpacing, config.rowSpacing,
-    );
+    // 只在用户已校准过（非默认 0,0）时同步校准配置
+    // 避免默认值覆盖悬浮窗根据屏幕尺寸计算的居中位置
+    if (config.baseX != 0 || config.baseY != 0) {
+      NativeService.updateFloatingConfig(
+        config.baseX, config.baseY, config.columnSpacing, config.rowSpacing,
+      );
+    }
   }
 
   void _showSnackBar(String message, {bool isError = false}) {
@@ -800,13 +804,19 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
   }
 
   /// 调试：依次点击所有 15 个琴键，验证校准是否正确
+  /// 无论 DebugLog 开关如何，始终打印到控制台
   Future<void> _testTapAllKeys() async {
     final config = ref.read(settingsProvider);
 
-    DebugLog.divider('调试点击测试');
-    DebugLog.i('开始依次点击所有琴键...');
-    DebugLog.d('配置: baseX=${config.baseX}, baseY=${config.baseY}, '
-        'colSpacing=${config.columnSpacing}, rowSpacing=${config.rowSpacing}');
+    // 强制打印（不受 DebugLog.enabled 控制）
+    final log = DebugLog.logAlways;
+    log('═══════════════════════════════════════');
+    log('  调试点击测试 - 开始');
+    log('═══════════════════════════════════════');
+    log('配置: baseX=${config.baseX}, baseY=${config.baseY}');
+    log('      colSpacing=${config.columnSpacing}, rowSpacing=${config.rowSpacing}');
+    log('      tapDuration=${config.tapDurationMs}ms');
+    log('───────────────────────────────────────');
 
     const noteNames = [
       ['-1', '-2', '-3', '-4', '-5'],
@@ -820,20 +830,20 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
         final y = config.getY(row);
         final name = noteNames[row][col];
 
-        DebugLog.d('$name (row=$row, col=$col) → ($x, $y)');
+        log('$name (row=$row, col=$col) → (${x.toStringAsFixed(1)}, ${y.toStringAsFixed(1)})');
 
         NativeService.tap(x, y, config.tapDurationMs);
         if (_isFloatingRunning) {
           NativeService.showTapEffect(x, y);
         }
 
-        // 间隔 300ms 便于观察
         await Future.delayed(const Duration(milliseconds: 300));
       }
     }
 
-    DebugLog.i('调试点击测试完成');
-    DebugLog.divider();
+    log('───────────────────────────────────────');
+    log('  调试点击测试 - 完成');
+    log('═══════════════════════════════════════');
   }
 
   Widget _buildPlayButton({
@@ -1018,35 +1028,32 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
 
     if (notes.isEmpty) return;
 
-    // Debug 日志：配置参数
-    DebugLog.divider('按键事件 #${playbackState.currentEventIndex}');
-    DebugLog.d('配置: baseX=${config.baseX}, baseY=${config.baseY}, '
+    // 始终打印按键事件（不受 DebugLog 开关控制）
+    final log = DebugLog.logAlways;
+    log('─── 按键 #${playbackState.currentEventIndex} ───');
+    log('baseX=${config.baseX}, baseY=${config.baseY}, '
         'colSpacing=${config.columnSpacing}, rowSpacing=${config.rowSpacing}');
-
-    final noteNames = notes.map((n) => n.name).toList();
 
     if (notes.length == 1) {
       final note = notes[0];
       final x = config.getX(note.col);
       final y = config.getY(note.row);
-
-      DebugLog.d('单音: ${note.name} (row=${note.row}, col=${note.col})');
-      DebugLog.d('  计算: x = ${config.baseX} + ${note.col} × ${config.columnSpacing} = $x');
-      DebugLog.d('  计算: y = ${config.baseY} + ${note.row} × ${config.rowSpacing} = $y');
-      DebugLog.d('  → 点击 ($x, $y)');
+      log('${note.name} (r=${note.row}, c=${note.col}) → '
+          'x=${config.baseX}+${note.col}×${config.columnSpacing}=${x.toStringAsFixed(1)}, '
+          'y=${config.baseY}+${note.row}×${config.rowSpacing}=${y.toStringAsFixed(1)}');
 
       NativeService.tap(x, y, config.tapDurationMs);
       if (_isFloatingRunning) {
         NativeService.showTapEffect(x, y);
       }
     } else {
-      DebugLog.d('和弦: $noteNames');
+      log('和弦 ${notes.map((n) => n.name).toList()}');
       final points = <List<double>>[];
       for (final note in notes) {
         final x = config.getX(note.col);
         final y = config.getY(note.row);
         points.add([x, y]);
-        DebugLog.d('  ${note.name} (row=${note.row}, col=${note.col}) → ($x, $y)');
+        log('  ${note.name} (r=${note.row}, c=${note.col}) → (${x.toStringAsFixed(1)}, ${y.toStringAsFixed(1)})');
       }
 
       NativeService.tapMultiple(points, config.tapDurationMs);

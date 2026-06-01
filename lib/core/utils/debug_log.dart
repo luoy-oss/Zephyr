@@ -11,6 +11,13 @@ class DebugLog {
   /// 标签
   static const _tag = 'Zephyr';
 
+  /// 始终打印（不受 enabled 控制，用于用户主动触发的调试操作）
+  static void Function(String) get logAlways => (message) {
+    developer.log(message, name: _tag);
+    // ignore: avoid_print
+    print('[$_tag] $message');
+  };
+
   /// 普通调试信息
   static void d(String message) {
     if (!enabled) return;
