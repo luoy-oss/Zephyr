@@ -1,5 +1,6 @@
 package com.zephyr.zephyr
 
+import android.content.ComponentName
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
@@ -86,12 +87,26 @@ class MainActivity : FlutterActivity() {
     }
 
     private fun isAccessibilityServiceEnabled(): Boolean {
-        val serviceName = "${packageName}/${PianoAccessibilityService::class.java.canonicalName}"
+        // 方法1: 检查服务实例是否存在
+        if (PianoAccessibilityService.instance != null) {
+            return true
+        }
+
+        // 方法2: 检查系统设置中的启用服务列表
+        val serviceName = ComponentName(packageName, PianoAccessibilityService::class.java.name)
         val enabledServices = Settings.Secure.getString(
             contentResolver,
             Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
         ) ?: return false
-        return enabledServices.split(":").any { it.trim() == serviceName }
+
+        val colonSplitter = enabledServices.split(":")
+        for (componentName in colonSplitter) {
+            val cn = ComponentName.unflattenFromString(componentName.trim())
+            if (cn != null && cn == serviceName) {
+                return true
+            }
+        }
+        return false
     }
 
     private fun canDrawOverlays(): Boolean {
