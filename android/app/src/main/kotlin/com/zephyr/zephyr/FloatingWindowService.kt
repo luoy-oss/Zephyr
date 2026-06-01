@@ -922,7 +922,7 @@ class FloatingWindowService : Service() {
         tapDurationMs = ms
     }
 
-    fun updateCountdown(seconds: Int) {
+    fun updateCountdownSetting(seconds: Int) {
         countdownSeconds = seconds
     }
 

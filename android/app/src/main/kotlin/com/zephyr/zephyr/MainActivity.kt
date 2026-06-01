@@ -151,7 +151,7 @@ class MainActivity : FlutterActivity() {
                 }
                 "updateCountdownSeconds" -> {
                     val seconds = call.argument<Number>("seconds")?.toInt() ?: 3
-                    FloatingWindowService.instance?.updateCountdown(seconds)
+                    FloatingWindowService.instance?.updateCountdownSetting(seconds)
                     result.success(true)
                 }
                 "updateDebugMode" -> {
