@@ -149,6 +149,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
       }
     });
 
+    // 监听播放进度，同步到悬浮窗
+    ref.listen(playbackProvider, (prev, next) {
+      if (_isFloatingRunning) {
+        NativeService.updateProgress(next.currentEventIndex, next.totalEvents);
+      }
+    });
+
     if (_isChecking) {
       return const Scaffold(
         body: Center(
@@ -679,6 +686,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
       final x = config.getX(note.col);
       final y = config.getY(note.row);
       NativeService.tap(x, y, config.tapDurationMs);
+      // 显示点击动效
+      if (_isFloatingRunning) {
+        NativeService.showTapEffect(x, y);
+      }
     } else {
       // 和弦 - 多点点击
       final points = notes.map<List<double>>((note) => [
@@ -686,6 +697,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
         config.getY(note.row),
       ]).toList();
       NativeService.tapMultiple(points, config.tapDurationMs);
+      // 显示多个点击动效
+      if (_isFloatingRunning) {
+        for (final point in points) {
+          NativeService.showTapEffect(point[0], point[1]);
+        }
+      }
     }
   }
 }

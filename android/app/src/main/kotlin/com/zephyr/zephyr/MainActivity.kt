@@ -111,6 +111,18 @@ class MainActivity : FlutterActivity() {
                     setupFloatingCallbacks()
                     result.success(true)
                 }
+                "updateProgress" -> {
+                    val current = call.argument<Number>("current")?.toInt() ?: 0
+                    val total = call.argument<Number>("total")?.toInt() ?: 0
+                    FloatingWindowService.instance?.updateProgress(current, total)
+                    result.success(true)
+                }
+                "showTapEffect" -> {
+                    val x = (call.argument<Number>("x"))?.toFloat() ?: 0f
+                    val y = (call.argument<Number>("y"))?.toFloat() ?: 0f
+                    FloatingWindowService.instance?.showTapAt(x, y)
+                    result.success(true)
+                }
                 else -> result.notImplemented()
             }
         }

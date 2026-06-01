@@ -72,6 +72,22 @@ class NativeService {
     });
   }
 
+  /// 更新播放进度
+  static Future<void> updateProgress(int current, int total) async {
+    await _floatingChannel.invokeMethod('updateProgress', {
+      'current': current,
+      'total': total,
+    });
+  }
+
+  /// 显示点击动效
+  static Future<void> showTapEffect(double x, double y) async {
+    await _floatingChannel.invokeMethod('showTapEffect', {
+      'x': x,
+      'y': y,
+    });
+  }
+
   /// 设置悬浮窗回调
   static Future<void> setFloatingCallbacks({
     required Function() onPlay,

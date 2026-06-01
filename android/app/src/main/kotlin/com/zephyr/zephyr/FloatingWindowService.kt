@@ -1,5 +1,6 @@
 package com.zephyr.zephyr
 
+import android.animation.ValueAnimator
 import android.annotation.SuppressLint
 import android.app.Notification
 import android.app.NotificationChannel
@@ -43,6 +44,7 @@ class FloatingWindowService : Service() {
     private var floatingBall: View? = null
     private var mainPanel: View? = null
     private var calibrationView: CalibrationOverlayView? = null
+    private var tapEffectOverlay: TapEffectOverlay? = null
 
     private var isBallShowing = false
     private var isMainPanelShowing = false
@@ -52,6 +54,16 @@ class FloatingWindowService : Service() {
     private var currentSpeed = 1.0f
     private var selectedScoreName = "未选择"
     private var isPlaying = false
+    private var showTapEffect = true
+
+    // 播放进度
+    private var progressCurrent = 0
+    private var progressTotal = 0
+
+    // UI 引用
+    private var progressText: TextView? = null
+    private var progressBar: ProgressBar? = null
+    private var playBtnView: View? = null
 
     // 校准参数
     private var baseX = 200f
@@ -112,7 +124,7 @@ class FloatingWindowService : Service() {
         var lastY = 0f
         var isDragging = false
 
-        ball.setOnTouchListener { v, event ->
+        ball.setOnTouchListener { _, event ->
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
                     lastX = event.rawX
@@ -175,7 +187,6 @@ class FloatingWindowService : Service() {
 
     // ========== 主控制面板 ==========
 
-    @SuppressLint("ClickableViewAccessibility")
     private fun showMainPanel() {
         if (isMainPanelShowing) return
         hideFloatingBall()
@@ -199,8 +210,6 @@ class FloatingWindowService : Service() {
             setTypeface(null, Typeface.BOLD)
         }
         titleBar.addView(title, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
-
-        // 关闭按钮
         val closeBtn = TextView(this).apply {
             text = "✕"
             setTextColor(Color.WHITE)
@@ -209,9 +218,7 @@ class FloatingWindowService : Service() {
             setOnClickListener { hideMainPanel(); showFloatingBall() }
         }
         titleBar.addView(closeBtn)
-        panel.addView(titleBar, LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
-        ))
+        panel.addView(titleBar)
 
         panel.addView(createDivider())
 
@@ -221,57 +228,78 @@ class FloatingWindowService : Service() {
             gravity = Gravity.CENTER_VERTICAL
             setPadding(0, dpToPx(8), 0, dpToPx(8))
         }
-        val scoreIcon = TextView(this).apply {
-            text = "🎵"
-            textSize = 16f
-        }
-        scoreRow.addView(scoreIcon)
-        val scoreName = TextView(this).apply {
+        scoreRow.addView(TextView(this).apply { text = "🎵"; textSize = 16f })
+        val scoreNameView = TextView(this).apply {
             text = selectedScoreName
             setTextColor(Color.parseColor("#BBBBBB"))
             textSize = 13f
             setPadding(dpToPx(8), 0, 0, 0)
             tag = "scoreName"
         }
-        scoreRow.addView(scoreName, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
-        val selectBtn = TextView(this).apply {
+        scoreRow.addView(scoreNameView, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+        scoreRow.addView(TextView(this).apply {
             text = "选择 ▸"
             setTextColor(Color.parseColor("#6C63FF"))
             textSize = 13f
             setOnClickListener { showScoreSelector() }
-        }
-        scoreRow.addView(selectBtn)
+        })
         panel.addView(scoreRow)
 
         panel.addView(createDivider())
 
-        // 播放控制
+        // 播放进度
+        val progressContainer = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(0, dpToPx(8), 0, dpToPx(8))
+        }
+
+        progressText = TextView(this).apply {
+            text = "0 / 0"
+            setTextColor(Color.parseColor("#BBBBBB"))
+            textSize = 12f
+            gravity = Gravity.CENTER
+        }
+        progressContainer.addView(progressText)
+
+        progressBar = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
+            max = 100
+            progress = 0
+            progressDrawable?.setColorFilter(Color.parseColor("#6C63FF"), PorterDuff.Mode.SRC_IN)
+        }
+        progressContainer.addView(progressBar, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, dpToPx(6)
+        ).apply { topMargin = dpToPx(4) })
+
+        panel.addView(progressContainer)
+
+        panel.addView(createDivider())
+
+        // 播放控制按钮
         val controlRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
             setPadding(0, dpToPx(12), 0, dpToPx(12))
         }
 
-        val playBtn = createCircleButton("▶", "#4CAF50") {
+        playBtnView = createCircleButton("▶", "#4CAF50") {
             Log.d(TAG, "Play button clicked")
             onPlay?.invoke()
             updatePlayState(true)
         }
-        controlRow.addView(playBtn, LinearLayout.LayoutParams(dpToPx(52), dpToPx(52)).apply { marginEnd = dpToPx(12) })
+        controlRow.addView(playBtnView, LinearLayout.LayoutParams(dpToPx(52), dpToPx(52)).apply { marginEnd = dpToPx(12) })
 
-        val pauseBtn = createCircleButton("⏸", "#FF9800") {
+        controlRow.addView(createCircleButton("⏸", "#FF9800") {
             Log.d(TAG, "Pause button clicked")
             onPause?.invoke()
             updatePlayState(false)
-        }
-        controlRow.addView(pauseBtn, LinearLayout.LayoutParams(dpToPx(52), dpToPx(52)).apply { marginEnd = dpToPx(12) })
+        }, LinearLayout.LayoutParams(dpToPx(52), dpToPx(52)).apply { marginEnd = dpToPx(12) })
 
-        val stopBtn = createCircleButton("⏹", "#F44336") {
+        controlRow.addView(createCircleButton("⏹", "#F44336") {
             Log.d(TAG, "Stop button clicked")
             onStop?.invoke()
             updatePlayState(false)
-        }
-        controlRow.addView(stopBtn, LinearLayout.LayoutParams(dpToPx(52), dpToPx(52)))
+        }, LinearLayout.LayoutParams(dpToPx(52), dpToPx(52)))
+
         panel.addView(controlRow)
 
         panel.addView(createDivider())
@@ -281,7 +309,6 @@ class FloatingWindowService : Service() {
             text = "速度: ${String.format("%.2f", currentSpeed)}x"
             setTextColor(Color.WHITE)
             textSize = 13f
-            tag = "speedLabel"
         }
         panel.addView(speedLabel)
 
@@ -290,11 +317,10 @@ class FloatingWindowService : Service() {
             gravity = Gravity.CENTER_VERTICAL
             setPadding(0, dpToPx(4), 0, dpToPx(8))
         }
-        val speedMinus = createSmallButton("−") {
+        speedBar.addView(createSmallButton("−") {
             currentSpeed = (currentSpeed - 0.25f).coerceAtLeast(0.25f)
             speedLabel.text = "速度: ${String.format("%.2f", currentSpeed)}x"
-        }
-        speedBar.addView(speedMinus)
+        })
 
         val speedSlider = SeekBar(this).apply {
             max = 11
@@ -309,16 +335,37 @@ class FloatingWindowService : Service() {
             })
         }
         speedBar.addView(speedSlider, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
-            marginStart = dpToPx(8)
-            marginEnd = dpToPx(8)
+            marginStart = dpToPx(8); marginEnd = dpToPx(8)
         })
-
-        val speedPlus = createSmallButton("+") {
+        speedBar.addView(createSmallButton("+") {
             currentSpeed = (currentSpeed + 0.25f).coerceAtMost(3.0f)
             speedLabel.text = "速度: ${String.format("%.2f", currentSpeed)}x"
-        }
-        speedBar.addView(speedPlus)
+        })
         panel.addView(speedBar)
+
+        panel.addView(createDivider())
+
+        // 点击动效开关
+        val effectRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, dpToPx(4), 0, dpToPx(4))
+        }
+        effectRow.addView(TextView(this).apply {
+            text = "🎹 点击动效"
+            setTextColor(Color.WHITE)
+            textSize = 13f
+        })
+        effectRow.addView(View(this), LinearLayout.LayoutParams(0, 0, 1f))
+        val effectSwitch = Switch(this).apply {
+            isChecked = showTapEffect
+            setOnCheckedChangeListener { _, checked ->
+                showTapEffect = checked
+                if (!checked) hideTapEffectOverlay()
+            }
+        }
+        effectRow.addView(effectSwitch)
+        panel.addView(effectRow)
 
         panel.addView(createDivider())
 
@@ -333,37 +380,29 @@ class FloatingWindowService : Service() {
             setPadding(dpToPx(16), dpToPx(12), dpToPx(16), dpToPx(12))
             setOnClickListener { startCalibrationMode() }
         }
-        val calIcon = TextView(this).apply { text = "🎯"; textSize = 16f }
-        calibrateBtn.addView(calIcon)
-        val calText = TextView(this).apply {
+        calibrateBtn.addView(TextView(this).apply { text = "🎯"; textSize = 16f })
+        calibrateBtn.addView(TextView(this).apply {
             text = "  校准琴键位置"
             setTextColor(Color.WHITE)
             textSize = 14f
-        }
-        calibrateBtn.addView(calText)
-        val calArrow = TextView(this).apply {
+        })
+        calibrateBtn.addView(TextView(this).apply {
             text = "▸"
             setTextColor(Color.parseColor("#6C63FF"))
             textSize = 14f
-        }
-        calibrateBtn.addView(calArrow, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
-            gravity = Gravity.END
-        })
+        }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { gravity = Gravity.END })
         panel.addView(calibrateBtn, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
         ).apply { topMargin = dpToPx(8) })
 
         mainPanel = panel
 
-        // 创建窗口参数 - 注意：不设置 FLAG_NOT_FOCUSABLE 以允许点击
         val params = WindowManager.LayoutParams(
             panelW, LinearLayout.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
             WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
             PixelFormat.TRANSPARENT
-        ).apply {
-            gravity = Gravity.CENTER
-        }
+        ).apply { gravity = Gravity.CENTER }
 
         // 标题栏可拖拽
         var dragStartX = 0f
@@ -373,10 +412,8 @@ class FloatingWindowService : Service() {
         titleBar.setOnTouchListener { _, event ->
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
-                    dragStartX = event.rawX
-                    dragStartY = event.rawY
-                    paramStartX = params.x
-                    paramStartY = params.y
+                    dragStartX = event.rawX; dragStartY = event.rawY
+                    paramStartX = params.x; paramStartY = params.y
                     true
                 }
                 MotionEvent.ACTION_MOVE -> {
@@ -396,16 +433,73 @@ class FloatingWindowService : Service() {
     private fun hideMainPanel() {
         try { mainPanel?.let { windowManager?.removeView(it) } } catch (_: Exception) {}
         mainPanel = null
+        progressText = null
+        progressBar = null
+        playBtnView = null
         isMainPanelShowing = false
+    }
+
+    // ========== 播放进度更新 ==========
+
+    fun updateProgress(current: Int, total: Int) {
+        progressCurrent = current
+        progressTotal = total
+        Log.d(TAG, "Progress: $current / $total")
+
+        // 在 UI 线程更新
+        val handler = android.os.Handler(mainLooper)
+        handler.post {
+            progressText?.text = "$current / $total"
+            progressBar?.max = if (total > 0) total else 100
+            progressBar?.progress = current
+        }
+    }
+
+    // ========== 点击动效 ==========
+
+    fun showTapAt(x: Float, y: Float) {
+        if (!showTapEffect) return
+
+        val handler = android.os.Handler(mainLooper)
+        handler.post {
+            if (tapEffectOverlay == null) {
+                showTapEffectOverlay()
+            }
+            tapEffectOverlay?.addTapEffect(x, y)
+        }
+    }
+
+    private fun showTapEffectOverlay() {
+        if (tapEffectOverlay != null) return
+
+        tapEffectOverlay = TapEffectOverlay(this)
+
+        val params = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                    WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
+                    WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+            PixelFormat.TRANSPARENT
+        )
+
+        try {
+            windowManager?.addView(tapEffectOverlay, params)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error showing tap effect overlay", e)
+        }
+    }
+
+    private fun hideTapEffectOverlay() {
+        try { tapEffectOverlay?.let { windowManager?.removeView(it) } } catch (_: Exception) {}
+        tapEffectOverlay = null
     }
 
     private fun updatePlayState(playing: Boolean) {
         isPlaying = playing
-        floatingBall?.let { ball ->
-            (ball as? ImageView)?.setImageResource(
-                if (playing) android.R.drawable.ic_media_pause
-                else android.R.drawable.ic_media_play
-            )
+        if (!playing) {
+            updateProgress(0, progressTotal)
         }
     }
 
@@ -428,44 +522,36 @@ class FloatingWindowService : Service() {
             setPadding(dpToPx(16), dpToPx(12), dpToPx(16), dpToPx(12))
         }
 
-        // 标题
         val titleBar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
         }
-        val backBtn = TextView(this).apply {
+        titleBar.addView(TextView(this).apply {
             text = "◂ 返回"
             setTextColor(Color.parseColor("#6C63FF"))
             textSize = 14f
             setOnClickListener { hideScoreSelector(); showMainPanel() }
-        }
-        titleBar.addView(backBtn)
-        val title = TextView(this).apply {
+        })
+        titleBar.addView(TextView(this).apply {
             text = "  选择曲目"
             setTextColor(Color.WHITE)
             textSize = 16f
             setTypeface(null, Typeface.BOLD)
-        }
-        titleBar.addView(title, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+        }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
         panel.addView(titleBar)
-
         panel.addView(createDivider())
 
-        // 曲目列表
         val scrollView = ScrollView(this)
-        val listLayout = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-        }
+        val listLayout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
 
         if (scoreList.isEmpty()) {
-            val emptyText = TextView(this).apply {
+            listLayout.addView(TextView(this).apply {
                 text = "暂无曲目\n请在应用中导入琴谱"
                 setTextColor(Color.parseColor("#888888"))
                 textSize = 14f
                 gravity = Gravity.CENTER
                 setPadding(0, dpToPx(40), 0, 0)
-            }
-            listLayout.addView(emptyText)
+            })
         } else {
             for ((id, name) in scoreList) {
                 val item = LinearLayout(this).apply {
@@ -483,15 +569,12 @@ class FloatingWindowService : Service() {
                         showMainPanel()
                     }
                 }
-                val icon = TextView(this).apply { text = "🎵"; textSize = 14f }
-                item.addView(icon)
-                val nameText = TextView(this).apply {
+                item.addView(TextView(this).apply { text = "🎵"; textSize = 14f })
+                item.addView(TextView(this).apply {
                     text = "  $name"
                     setTextColor(Color.WHITE)
                     textSize = 14f
-                }
-                item.addView(nameText, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
-
+                }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
                 listLayout.addView(item, LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
                 ).apply { bottomMargin = dpToPx(4) })
@@ -526,10 +609,7 @@ class FloatingWindowService : Service() {
 
         calibrationView = CalibrationOverlayView(this, baseX, baseY, colSpacing, rowSpacing).apply {
             onConfirm = { bx, by, cs, rs ->
-                baseX = bx
-                baseY = by
-                colSpacing = cs
-                rowSpacing = rs
+                baseX = bx; baseY = by; colSpacing = cs; rowSpacing = rs
                 onCalibrationChanged?.invoke(bx, by, cs, rs)
                 stopCalibrationMode()
                 showMainPanel()
@@ -566,10 +646,7 @@ class FloatingWindowService : Service() {
     }
 
     fun updateConfig(bx: Float, by: Float, cs: Float, rs: Float) {
-        baseX = bx
-        baseY = by
-        colSpacing = cs
-        rowSpacing = rs
+        baseX = bx; baseY = by; colSpacing = cs; rowSpacing = rs
     }
 
     // ========== 辅助方法 ==========
@@ -585,48 +662,28 @@ class FloatingWindowService : Service() {
 
     private fun createCircleButton(text: String, color: String, onClick: () -> Unit): FrameLayout {
         val container = FrameLayout(this)
-
-        // 圆形背景
         val bg = GradientDrawable()
         bg.setColor(Color.parseColor(color))
         bg.cornerRadius = dpToPx(26).toFloat()
         container.background = bg
 
-        // 文字
-        val textView = TextView(this).apply {
+        container.addView(TextView(this).apply {
             this.text = text
             setTextColor(Color.WHITE)
             textSize = 20f
             gravity = Gravity.CENTER
-        }
-        container.addView(textView, FrameLayout.LayoutParams(
-            FrameLayout.LayoutParams.MATCH_PARENT,
-            FrameLayout.LayoutParams.MATCH_PARENT
-        ))
+        }, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
 
-        // 点击效果
         container.isClickable = true
         container.isFocusable = true
-        container.setOnClickListener {
-            Log.d(TAG, "Button clicked: $text")
-            onClick()
-        }
-
-        // 添加按压效果
+        container.setOnClickListener { onClick() }
         container.setOnTouchListener { v, event ->
             when (event.action) {
-                MotionEvent.ACTION_DOWN -> {
-                    v.alpha = 0.7f
-                    false
-                }
-                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                    v.alpha = 1.0f
-                    false
-                }
+                MotionEvent.ACTION_DOWN -> { v.alpha = 0.7f; false }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> { v.alpha = 1.0f; false }
                 else -> false
             }
         }
-
         return container
     }
 
@@ -648,6 +705,7 @@ class FloatingWindowService : Service() {
     override fun onDestroy() {
         isRunning = false
         stopCalibrationMode()
+        hideTapEffectOverlay()
         hideMainPanel()
         hideFloatingBall()
         instance = null
