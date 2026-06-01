@@ -3,6 +3,7 @@ package com.zephyr.zephyr
 import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.*
+import android.util.Log
 import android.view.MotionEvent
 import android.view.ScaleGestureDetector
 import android.view.View
@@ -37,9 +38,24 @@ class CalibrationOverlayView(
     // 第一步：准心是否已放置
     private var crosshairPlaced = false
 
-    // 第一步确认后锁定的基准位置
+    // 第一步确认后锁定的基准位置（视图坐标）
     private var lockedX = baseX
     private var lockedY = baseY
+
+    // 视图在屏幕上的偏移量（用于转换为屏幕坐标）
+    private val screenOffset = IntArray(2)
+
+    /**
+     * 将视图坐标转为屏幕坐标
+     * event.x/y 是相对于视图左上角的，dispatchGesture 需要屏幕绝对坐标
+     */
+    private fun viewToScreenX(viewX: Float): Float {
+        return viewX + screenOffset[0]
+    }
+
+    private fun viewToScreenY(viewY: Float): Float {
+        return viewY + screenOffset[1]
+    }
 
     // ===== 画笔 =====
     private val crosshairPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -195,6 +211,9 @@ class CalibrationOverlayView(
         val h = height.toFloat()
         panelTop = h - panelHeight
 
+        // 获取视图在屏幕上的绝对位置（关键：event.x 是视图坐标，dispatchGesture 需要屏幕坐标）
+        getLocationOnScreen(screenOffset)
+
         if (step == 1) drawStep1(canvas, w, h)
         else drawStep2(canvas, w, h)
     }
@@ -244,9 +263,11 @@ class CalibrationOverlayView(
             titlePaint.color = Color.parseColor("#FF5252")
             canvas.drawText("-1", cx, cy - 70f, titlePaint)
 
-            // 实时坐标显示
-            canvas.drawText("X: ${cx.toInt()}", 20f, 160f, coordPaint)
-            canvas.drawText("Y: ${cy.toInt()}", 20f, 188f, coordPaint)
+            // 实时坐标显示（屏幕坐标 = 视图坐标 + 偏移）
+            val screenX = viewToScreenX(cx).toInt()
+            val screenY = viewToScreenY(cy).toInt()
+            canvas.drawText("X: $screenX  (view:${cx.toInt()} + offset:${screenOffset[0]})", 20f, 160f, coordPaint)
+            canvas.drawText("Y: $screenY  (view:${cy.toInt()} + offset:${screenOffset[1]})", 20f, 188f, coordPaint)
         }
 
         // 底部面板
@@ -316,8 +337,10 @@ class CalibrationOverlayView(
         canvas.drawText("第二步：调整琴键间距", w / 2f, 60f, titlePaint)
         canvas.drawText("拖动滑条或双指缩放调整间距", w / 2f, 100f, hintPaint)
 
-        // 坐标显示
-        canvas.drawText("-1: (${lockedX.toInt()}, ${lockedY.toInt()})", 20f, 140f, coordPaint)
+        // 坐标显示（屏幕坐标）
+        val screenLX = viewToScreenX(lockedX).toInt()
+        val screenLY = viewToScreenY(lockedY).toInt()
+        canvas.drawText("-1: screen($screenLX, $screenLY)  offset(${screenOffset[0]}, ${screenOffset[1]})", 20f, 140f, coordPaint)
 
         // ===== 底部控制面板 =====
         canvas.drawRect(0f, panelTop, w, h, panelPaint)
@@ -452,6 +475,9 @@ class CalibrationOverlayView(
                 nextBtnRect.contains(x, y) && crosshairPlaced -> {
                     lockedX = baseX
                     lockedY = baseY
+                    Log.d("Calibration", "Step1→Step2: viewX=$baseX, viewY=$baseY, " +
+                        "screenX=${viewToScreenX(baseX)}, screenY=${viewToScreenY(baseY)}, " +
+                        "offset=(${screenOffset[0]}, ${screenOffset[1]})")
                     step = 2
                     invalidate()
                 }
@@ -484,7 +510,13 @@ class CalibrationOverlayView(
                     invalidate()
                 }
                 confirmBtnRect.contains(x, y) -> {
-                    onConfirm?.invoke(lockedX, lockedY, colSpacing, rowSpacing)
+                    // 转换为屏幕坐标后回调
+                    val screenX = viewToScreenX(lockedX)
+                    val screenY = viewToScreenY(lockedY)
+                    Log.d("Calibration", "Confirm: viewX=$lockedX, viewY=$lockedY, " +
+                        "screenX=$screenX, screenY=$screenY, " +
+                        "offset=(${screenOffset[0]}, ${screenOffset[1]})")
+                    onConfirm?.invoke(screenX, screenY, colSpacing, rowSpacing)
                 }
             }
         }
