@@ -42,6 +42,7 @@ class FloatingWindowService : Service() {
         var onTapDurationChanged: ((Int) -> Unit)? = null
         var onCountdownChanged: ((Int) -> Unit)? = null
         var onDebugModeChanged: ((Boolean) -> Unit)? = null
+        var onSpeedChanged: ((Float) -> Unit)? = null
     }
 
     private var windowManager: WindowManager? = null
@@ -351,6 +352,7 @@ class FloatingWindowService : Service() {
         speedBar.addView(createSmallButton("−") {
             currentSpeed = (currentSpeed - if (currentSpeed <= 1.0f) 0.1f else 0.5f).coerceAtLeast(0.1f)
             updateSpeedLabel()
+            onSpeedChanged?.invoke(currentSpeed)
         })
         speedBar.addView(SeekBar(this).apply {
             max = 99
@@ -361,7 +363,9 @@ class FloatingWindowService : Service() {
                     updateSpeedLabel()
                 }
                 override fun onStartTrackingTouch(sb: SeekBar?) {}
-                override fun onStopTrackingTouch(sb: SeekBar?) {}
+                override fun onStopTrackingTouch(sb: SeekBar?) {
+                    onSpeedChanged?.invoke(currentSpeed)
+                }
             })
         }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
             marginStart = dpToPx(8); marginEnd = dpToPx(8)
@@ -369,6 +373,7 @@ class FloatingWindowService : Service() {
         speedBar.addView(createSmallButton("+") {
             currentSpeed = (currentSpeed + if (currentSpeed < 1.0f) 0.1f else 0.5f).coerceAtMost(10.0f)
             updateSpeedLabel()
+            onSpeedChanged?.invoke(currentSpeed)
         })
         contentLayout.addView(speedBar)
         contentLayout.addView(createDivider())
@@ -928,6 +933,10 @@ class FloatingWindowService : Service() {
 
     fun updateDebugMode(enabled: Boolean) {
         debugMode = enabled
+    }
+
+    fun updateSpeed(speed: Float) {
+        currentSpeed = speed.coerceIn(0.1f, 10.0f)
     }
 
     // ========== 辅助方法 ==========

@@ -125,6 +125,11 @@ class NativeService {
     await _floatingChannel.invokeMethod('updateDebugMode', {'enabled': enabled});
   }
 
+  /// 更新播放速度倍率
+  static Future<void> updateSpeed(double speed) async {
+    await _floatingChannel.invokeMethod('updateSpeed', {'speed': speed});
+  }
+
   /// 设置悬浮窗回调
   static Future<void> setFloatingCallbacks({
     required Function() onPlay,
@@ -136,6 +141,7 @@ class NativeService {
     Function(int)? onTapDurationChanged,
     Function(int)? onCountdownChanged,
     Function(bool)? onDebugModeChanged,
+    Function(double)? onSpeedChanged,
   }) async {
     // 先设置原生端回调
     await _floatingChannel.invokeMethod('setCallbacks');
@@ -179,6 +185,10 @@ class NativeService {
         case 'onDebugModeChanged':
           final enabled = call.arguments as bool? ?? false;
           onDebugModeChanged?.call(enabled);
+          break;
+        case 'onSpeedChanged':
+          final speed = (call.arguments as num?)?.toDouble() ?? 1.0;
+          onSpeedChanged?.call(speed);
           break;
       }
     });

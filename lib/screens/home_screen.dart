@@ -121,6 +121,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
         ref.read(debugModeProvider.notifier).setEnabled(enabled);
         DebugLog.d('悬浮窗更新Debug模式: $enabled');
       },
+      onSpeedChanged: (speed) {
+        ref.read(playbackProvider.notifier).setSpeed(speed);
+        DebugLog.d('悬浮窗更新速度: ${speed}x');
+      },
     );
     _callbacksSet = true;
     _syncDataToFloating();

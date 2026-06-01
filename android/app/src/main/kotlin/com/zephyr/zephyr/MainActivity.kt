@@ -159,6 +159,11 @@ class MainActivity : FlutterActivity() {
                     FloatingWindowService.instance?.updateDebugMode(enabled)
                     result.success(true)
                 }
+                "updateSpeed" -> {
+                    val speed = (call.argument<Number>("speed"))?.toFloat() ?: 1.0f
+                    FloatingWindowService.instance?.updateSpeed(speed)
+                    result.success(true)
+                }
                 else -> result.notImplemented()
             }
         }
@@ -222,6 +227,12 @@ class MainActivity : FlutterActivity() {
             Log.d(TAG, "onDebugModeChanged callback triggered: $enabled")
             runOnUiThread {
                 floatingMethodChannel?.invokeMethod("onDebugModeChanged", enabled)
+            }
+        }
+        FloatingWindowService.onSpeedChanged = { speed ->
+            Log.d(TAG, "onSpeedChanged callback triggered: $speed")
+            runOnUiThread {
+                floatingMethodChannel?.invokeMethod("onSpeedChanged", speed.toDouble())
             }
         }
     }
